@@ -9,7 +9,10 @@ import {
   onValue,
   off,
   DataSnapshot,
-  startAfter
+  startAfter,
+  push,
+  update,
+  serverTimestamp
 } from 'firebase/database';
 import { 
   ref as storageRef, 
@@ -21,6 +24,7 @@ import { Prize } from '@/types/prize';
 import { Winner } from '@/types/winner';
 import { Draw } from '@/types/draw';
 import { GameTheme } from '@/types/theme';
+import { DrawSequence, DrawStep, DrawWinner } from '@/types/draw-sequence';
 
 // Define types for Firebase data
 interface AgentData {
@@ -539,6 +543,250 @@ export const firebaseService = {
     } catch (error) {
       console.error(`Error getting image URL for path ${path}:`, error);
       return '';
+    }
+  },
+  
+  /**
+   * Creates a new draw sequence for a lottery
+   * @param lotteryId The ID of the lottery
+   * @returns Promise with the created draw sequence ID
+   */
+  async createDrawSequence(lotteryId: string): Promise<string> {
+    try {
+      const drawsRef = ref(database, 'drawSequences');
+      const newDrawRef = push(drawsRef);
+      const drawId = newDrawRef.key;
+      
+      if (!drawId) {
+        throw new Error('Failed to generate draw ID');
+      }
+      
+      const now = new Date().toISOString();
+      
+      const drawSequence: Omit<DrawSequence, 'id'> = {
+        lotteryId,
+        drawDate: now,
+        status: 'pending',
+        steps: [],
+        winners: [],
+        createdAt: now,
+        updatedAt: now
+      };
+      
+      await update(newDrawRef, drawSequence);
+      
+      // Update the lottery to link it to the draw
+      const lotteryRef = ref(database, `lotteries/${lotteryId}`);
+      await update(lotteryRef, {
+        drawId,
+        drawDate: now,
+        status: 'drawing',
+        updatedAt: now
+      });
+      
+      return drawId;
+    } catch (error) {
+      console.error('Error creating draw sequence:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Adds a step to a draw sequence
+   * @param drawId The ID of the draw sequence
+   * @param step The step to add
+   * @returns Promise that resolves when the step is added
+   */
+  async addDrawStep(drawId: string, step: Omit<DrawStep, 'timestamp'>): Promise<void> {
+    try {
+      const drawRef = ref(database, `drawSequences/${drawId}`);
+      const drawStepsRef = ref(database, `drawSequences/${drawId}/steps`);
+      
+      // Get current steps
+      const snapshot = await get(drawStepsRef);
+      const steps: DrawStep[] = snapshot.exists() ? snapshot.val() : [];
+      
+      // Add new step with timestamp
+      const newStep: DrawStep = {
+        ...step,
+        timestamp: Date.now()
+      };
+      
+      steps.push(newStep);
+      
+      // Update steps and lastUpdated
+      await update(drawRef, {
+        steps,
+        status: step.action === 'celebrate' ? 'completed' : 'in-progress',
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Error adding step to draw ${drawId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Adds a winner to a draw sequence
+   * @param drawId The ID of the draw sequence
+   * @param winner The winner to add
+   * @returns Promise that resolves when the winner is added
+   */
+  async addDrawWinner(drawId: string, winner: DrawWinner): Promise<void> {
+    try {
+      const drawRef = ref(database, `drawSequences/${drawId}`);
+      const drawWinnersRef = ref(database, `drawSequences/${drawId}/winners`);
+      
+      // Get current winners
+      const snapshot = await get(drawWinnersRef);
+      const winners: DrawWinner[] = snapshot.exists() ? snapshot.val() : [];
+      
+      // Add new winner
+      winners.push(winner);
+      
+      // Update winners and lastUpdated
+      await update(drawRef, {
+        winners,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Also record the winner in the winners collection
+      const winnersRef = ref(database, 'winners');
+      const newWinnerRef = push(winnersRef);
+      
+      await update(newWinnerRef, {
+        name: winner.playerName,
+        ticketNumber: winner.ticketNumber,
+        prizeId: winner.prize.id,
+        prize: winner.prize,
+        drawId,
+        lotteryId: (await get(ref(database, `drawSequences/${drawId}/lotteryId`))).val(),
+        drawDate: (await get(ref(database, `drawSequences/${drawId}/drawDate`))).val(),
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Error adding winner to draw ${drawId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Completes a draw sequence
+   * @param drawId The ID of the draw sequence
+   * @param lotteryId The ID of the lottery
+   * @returns Promise that resolves when the draw is completed
+   */
+  async completeDrawSequence(drawId: string, lotteryId: string): Promise<void> {
+    try {
+      const drawRef = ref(database, `drawSequences/${drawId}`);
+      const lotteryRef = ref(database, `lotteries/${lotteryId}`);
+      
+      const now = new Date().toISOString();
+      
+      // Update draw status
+      await update(drawRef, {
+        status: 'completed',
+        updatedAt: now
+      });
+      
+      // Update lottery status
+      await update(lotteryRef, {
+        status: 'completed',
+        completedAt: now,
+        updatedAt: now
+      });
+    } catch (error) {
+      console.error(`Error completing draw ${drawId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Gets a draw sequence by ID
+   * @param drawId The ID of the draw sequence
+   * @returns Promise with the draw sequence or null if not found
+   */
+  async getDrawSequence(drawId: string): Promise<DrawSequence | null> {
+    try {
+      const drawRef = ref(database, `drawSequences/${drawId}`);
+      const snapshot = await get(drawRef);
+      
+      if (snapshot.exists()) {
+        return {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error fetching draw sequence ${drawId}:`, error);
+      return null;
+    }
+  },
+
+  /**
+   * Subscribes to a draw sequence for real-time updates
+   * @param drawId The ID of the draw sequence
+   * @param callback Function to call with updated data
+   * @returns Unsubscribe function
+   */
+  subscribeToDrawSequence(drawId: string, callback: (drawSequence: DrawSequence | null) => void): () => void {
+    const drawRef = ref(database, `drawSequences/${drawId}`);
+    
+    const handleData = (snapshot: DataSnapshot) => {
+      if (snapshot.exists()) {
+        const drawSequence = {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+        callback(drawSequence);
+      } else {
+        callback(null);
+      }
+    };
+    
+    onValue(drawRef, handleData);
+    
+    return () => {
+      off(drawRef, 'value', handleData);
+    };
+  },
+
+  /**
+   * Gets the latest draw sequence for a lottery
+   * @param lotteryId The ID of the lottery
+   * @returns Promise with the draw sequence or null if not found
+   */
+  async getLatestDrawSequenceForLottery(lotteryId: string): Promise<DrawSequence | null> {
+    try {
+      const drawsRef = ref(database, 'drawSequences');
+      const lotteryDrawsQuery = query(
+        drawsRef, 
+        orderByChild('lotteryId'), 
+        equalTo(lotteryId),
+        limitToLast(1)
+      );
+      
+      const snapshot = await get(lotteryDrawsQuery);
+      
+      if (snapshot.exists()) {
+        let drawSequence: DrawSequence | null = null;
+        
+        snapshot.forEach((childSnapshot) => {
+          drawSequence = {
+            id: childSnapshot.key as string,
+            ...childSnapshot.val()
+          };
+        });
+        
+        return drawSequence;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`Error fetching latest draw sequence for lottery ${lotteryId}:`, error);
+      return null;
     }
   },
   
