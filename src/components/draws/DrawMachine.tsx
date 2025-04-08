@@ -7,8 +7,7 @@ import { firebaseService } from '@/services/firebase-service';
 import { 
   DrawSequence, 
   DrawWinner, 
-  AnimatedTicket, 
-  DrawMachineState
+  AnimatedTicket
 } from '@/types/draw-sequence';
 import { Lottery } from '@/types/lottery';
 import { 
