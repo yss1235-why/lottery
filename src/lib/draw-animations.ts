@@ -34,7 +34,7 @@ export function createRandomTicketPositions(
     
     tickets.push({
       number: i,
-      status: 'idle',
+      status: 'idle' as const,  // Added type assertion here
       position: {
         x,
         y,
