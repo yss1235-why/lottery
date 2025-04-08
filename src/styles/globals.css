@@ -392,3 +392,157 @@ h1, h2, h3, h4, h5, h6 {
   0% { transform: translateX(-100%); }
   20%, 100% { transform: translateX(100%); }
 }
+
+/* Draw Animation Styles */
+.draw-machine-container {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  background-image: linear-gradient(135deg, var(--neutral-dark) 0%, var(--primary-color) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tickets-container {
+  transform-style: preserve-3d;
+}
+
+.draw-ticket {
+  width: 40px;
+  height: 40px;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #333;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: all 0.3s ease;
+}
+
+.draw-ticket.selected {
+  background-color: var(--prize-gold);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+  color: #000;
+  z-index: 10;
+}
+
+.draw-ticket.winning {
+  background-color: #FF4500;
+  box-shadow: 0 0 30px rgba(255, 69, 0, 0.8);
+  color: white;
+  z-index: 10;
+}
+
+.draw-ticket.not-selected {
+  opacity: 0.5;
+}
+
+.spotlight-effect {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255, 215, 0, 0.3) 0%, rgba(255, 215, 0, 0) 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.prize-particle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.prize-display {
+  background-color: var(--neutral-dark);
+  border: 1px solid var(--prize-gold);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3), 0 0 10px rgba(255, 215, 0, 0.5);
+  transform: translateZ(20px);
+}
+
+.control-btn {
+  transition: all 0.2s ease;
+}
+
+.control-btn:hover {
+  transform: scale(1.1);
+}
+
+.agent-btn {
+  transition: all 0.2s ease;
+}
+
+.agent-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Winner animations */
+.winner-card {
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.winner-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.winner-glow {
+  animation: winnerGlow 2s infinite alternate;
+}
+
+@keyframes winnerGlow {
+  0% { opacity: 0.2; box-shadow: 0 0 5px var(--prize-gold); }
+  100% { opacity: 0.8; box-shadow: 0 0 20px var(--prize-gold); }
+}
+
+/* Draw machine status indicators */
+.status-display {
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.5px;
+}
+
+/* Tab navigation */
+.tab-navigation button {
+  transition: all 0.3s ease;
+}
+
+.tab-navigation button:hover {
+  transform: translateY(-2px);
+}
+
+/* Draw progress slider */
+.draw-progress {
+  animation: fadeIn 0.5s ease;
+}
+
+/* Animation for selection effect */
+@keyframes ticketPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 215, 0, 0); }
+  50% { transform: scale(1.5); box-shadow: 0 0 30px rgba(255, 215, 0, 0.8); }
+  100% { transform: scale(1.2); box-shadow: 0 0 15px rgba(255, 215, 0, 0.5); }
+}
+
+/* Animation for celebration */
+@keyframes celebrate {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.1); }
+  50% { transform: scale(1); }
+  75% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* Animation for prize reveal */
+@keyframes prizeReveal {
+  0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
