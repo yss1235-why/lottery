@@ -188,7 +188,7 @@ export function revealWinnerAnimation(
   // Add some particle effects
   const particles = createParticleElements(20, prizeElement);
   
-  particles.forEach((particle, i) => {
+  particles.forEach((particle) => {
     const angle = Math.random() * Math.PI * 2;
     const distance = 50 + Math.random() * 100;
     
@@ -236,11 +236,9 @@ function createParticleElements(count: number, containerElement: HTMLElement): H
 /**
  * Creates a celebration animation
  * @param containerElement Container DOM element
- * @param duration Duration of the animation in seconds
  */
 export function celebrationAnimation(
-  containerElement: HTMLElement,
-  duration: number = 3
+  containerElement: HTMLElement
 ): void {
   // Create multiple waves of particles
   for (let wave = 0; wave < 3; wave++) {
