@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { firebaseService } from '@/services/firebase-service';
 import { 
   DrawSequence, 
-  DrawStep, 
   DrawWinner, 
   AnimatedTicket, 
   DrawMachineState
@@ -22,7 +21,7 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdShuffle, MdPause, MdPlayArrow, MdFastForward, MdReplay } from 'react-icons/md';
+import { MdShuffle, MdPause, MdPlayArrow, MdReplay } from 'react-icons/md';
 
 interface DrawMachineProps {
   lotteryId: string;
@@ -116,7 +115,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
       if (unsubscribeLottery) unsubscribeLottery();
       if (unsubscribeDraw) unsubscribeDraw();
     };
-  }, [lotteryId, drawId]);
+  }, [lotteryId, drawId, machineState]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
