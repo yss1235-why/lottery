@@ -7,7 +7,7 @@ import { analyticsService } from '@/services/analytics-service';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import ActiveDrawsHeader from '@/components/draws/ActiveDrawsHeader';
-import LotteryGrid from '@/components/lotteries/LotteryGrid';
+import InfiniteScrollLotteryGrid from '@/components/lotteries/InfiniteScrollLotteryGrid';
 
 export default function ActiveDrawsPage() {
   const { lotteries, loading, error } = useLotteries();
@@ -32,7 +32,7 @@ export default function ActiveDrawsPage() {
           <h2 className="text-xl font-poppins font-semibold mb-4">All Active Draws</h2>
           
           {lotteries.length > 0 ? (
-            <LotteryGrid lotteries={lotteries} />
+            <InfiniteScrollLotteryGrid initialLotteries={lotteries} />
           ) : (
             <div className="text-center py-8 text-neutral-light opacity-70">
               No active lotteries available at this time.
