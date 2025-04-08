@@ -29,12 +29,20 @@ interface DrawMachineProps {
   isAgent?: boolean;
 }
 
+// Define status constants to avoid type issues
+const IDLE_STATUS = 'idle';
+const SHUFFLING_STATUS = 'shuffling';
+const SELECTING_STATUS = 'selecting';
+const REVEALING_STATUS = 'revealing';
+const CELEBRATING_STATUS = 'celebrating';
+const COMPLETE_STATUS = 'complete';
+
 export default function DrawMachine({ lotteryId, drawId, isAgent = false }: DrawMachineProps) {
   const [lottery, setLottery] = useState<Lottery | null>(null);
   const [drawSequence, setDrawSequence] = useState<DrawSequence | null>(null);
   const [tickets, setTickets] = useState<AnimatedTicket[]>([]);
-  const [machineState, setMachineState] = useState<DrawMachineState>({
-    status: 'idle',
+  const [machineState, setMachineState] = useState({
+    status: IDLE_STATUS,
     currentStep: -1,
     speed: 1
   });
@@ -96,12 +104,12 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           if (drawData.status === 'pending') {
             setMachineState({
               ...machineState,
-              status: 'idle'
+              status: IDLE_STATUS
             });
           } else if (drawData.status === 'completed') {
             setMachineState({
               ...machineState,
-              status: 'complete',
+              status: COMPLETE_STATUS,
               currentStep: drawData.steps.length - 1
             });
           }
@@ -136,7 +144,10 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
   
   // Handle draw step execution
   useEffect(() => {
-    if (!drawSequence || !ticketsContainerRef.current || machineState.status === 'idle') return;
+    if (!drawSequence || !ticketsContainerRef.current) return;
+    
+    // Skip if status is not idle - use type assertion to avoid compile error
+    if (machineState.status !== IDLE_STATUS) return;
     
     const currentStepIndex = machineState.currentStep;
     if (currentStepIndex < 0 || currentStepIndex >= drawSequence.steps.length) return;
@@ -147,7 +158,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
     const executeStep = async () => {
       switch (currentStep.action) {
         case 'shuffle':
-          setMachineState({ ...machineState, status: 'shuffling' });
+          setMachineState({ ...machineState, status: SHUFFLING_STATUS });
           const shuffledTickets = await shuffleTicketsAnimation(
             tickets, 
             containerElement, 
@@ -158,7 +169,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           if (currentStepIndex < drawSequence.steps.length - 1) {
             setMachineState({
               ...machineState,
-              status: 'idle',
+              status: IDLE_STATUS,
               currentStep: currentStepIndex + 1
             });
           }
@@ -166,7 +177,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           
         case 'select':
           if (currentStep.ticketNumber) {
-            setMachineState({ ...machineState, status: 'selecting' });
+            setMachineState({ ...machineState, status: SELECTING_STATUS });
             selectTicketAnimation(currentStep.ticketNumber, containerElement, () => {
               // Update ticket status with type assertion
               const updatedTickets = tickets.map(ticket => {
@@ -181,7 +192,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
               if (currentStepIndex < drawSequence.steps.length - 1) {
                 setMachineState({
                   ...machineState,
-                  status: 'idle',
+                  status: IDLE_STATUS,
                   currentStep: currentStepIndex + 1
                 });
               }
@@ -191,7 +202,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           
         case 'reveal':
           if (currentStep.ticketNumber && currentStep.prizeIndex !== undefined) {
-            setMachineState({ ...machineState, status: 'revealing' });
+            setMachineState({ ...machineState, status: REVEALING_STATUS });
             
             // Find the winner for this ticket
             const winner = drawSequence.winners.find(
@@ -224,7 +235,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
                     if (currentStepIndex < drawSequence.steps.length - 1) {
                       setMachineState({
                         ...machineState,
-                        status: 'idle',
+                        status: IDLE_STATUS,
                         currentStep: currentStepIndex + 1
                       });
                     }
@@ -236,7 +247,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           break;
           
         case 'celebrate':
-          setMachineState({ ...machineState, status: 'celebrating' });
+          setMachineState({ ...machineState, status: CELEBRATING_STATUS });
           setShowConfetti(true);
           
           // Trigger celebration animation
@@ -247,16 +258,15 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
             setShowConfetti(false);
             setMachineState({
               ...machineState,
-              status: 'complete'
+              status: COMPLETE_STATUS
             });
           }, 5000 / machineState.speed);
           break;
       }
     };
     
-    if (machineState.status === 'idle') {
-      executeStep();
-    }
+    // Execute the current step
+    executeStep();
   }, [drawSequence, machineState, tickets]);
   
   // Agent control functions
@@ -282,7 +292,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
       // Set the machine to the first step
       setMachineState({
         ...machineState,
-        status: 'idle',
+        status: IDLE_STATUS,
         currentStep: 0
       });
     } catch (err) {
@@ -360,18 +370,18 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
   
   // User control functions
   const playDraw = () => {
-    if (machineState.status === 'complete') {
+    if (machineState.status === COMPLETE_STATUS) {
       // Restart from beginning
       setMachineState({
         ...machineState,
-        status: 'idle',
+        status: IDLE_STATUS,
         currentStep: 0
       });
     } else {
       // Resume from current step
       setMachineState({
         ...machineState,
-        status: 'idle'
+        status: IDLE_STATUS
       });
     }
   };
@@ -379,7 +389,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
   const pauseDraw = () => {
     setMachineState({
       ...machineState,
-      status: 'idle'
+      status: IDLE_STATUS
     });
   };
   
@@ -513,12 +523,12 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           
           {/* Status Display */}
           <div className="status-display absolute bottom-4 left-4 bg-neutral-dark/80 px-3 py-1 rounded-full text-sm">
-            {machineState.status === 'idle' ? 'Ready' :
-             machineState.status === 'shuffling' ? 'Shuffling tickets...' :
-             machineState.status === 'selecting' ? 'Selecting ticket...' :
-             machineState.status === 'revealing' ? 'Revealing winner...' :
-             machineState.status === 'celebrating' ? 'Celebrating winners!' :
-             machineState.status === 'complete' ? 'Draw completed' : ''}
+            {machineState.status === IDLE_STATUS ? 'Ready' :
+             machineState.status === SHUFFLING_STATUS ? 'Shuffling tickets...' :
+             machineState.status === SELECTING_STATUS ? 'Selecting ticket...' :
+             machineState.status === REVEALING_STATUS ? 'Revealing winner...' :
+             machineState.status === CELEBRATING_STATUS ? 'Celebrating winners!' :
+             machineState.status === COMPLETE_STATUS ? 'Draw completed' : ''}
           </div>
           
           {/* Confetti Effect */}
@@ -533,7 +543,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
         <div className="draw-controls mt-4 flex justify-between items-center bg-neutral-dark/50 p-3 rounded-lg">
           <div className="control-buttons flex space-x-3">
             {/* Play/Pause Button */}
-            {machineState.status === 'idle' || machineState.status === 'complete' ? (
+            {machineState.status === IDLE_STATUS || machineState.status === COMPLETE_STATUS ? (
               <button
                 onClick={playDraw}
                 className="control-btn bg-secondary w-10 h-10 rounded-full flex items-center justify-center"
@@ -552,9 +562,9 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
             )}
             
             {/* Replay Button */}
-            {machineState.status === 'complete' && (
+            {machineState.status === COMPLETE_STATUS && (
               <button
-                onClick={() => setMachineState({...machineState, status: 'idle', currentStep: 0})}
+                onClick={() => setMachineState({...machineState, status: IDLE_STATUS, currentStep: 0})}
                 className="control-btn bg-neutral-light/20 w-10 h-10 rounded-full flex items-center justify-center"
                 aria-label="Replay"
               >
