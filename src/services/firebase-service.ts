@@ -8,7 +8,8 @@ import {
   limitToLast,
   onValue,
   off,
-  DataSnapshot 
+  DataSnapshot,
+  startAfter
 } from 'firebase/database';
 import { 
   ref as storageRef, 
@@ -88,6 +89,69 @@ export const firebaseService = {
       return lotteries;
     } catch (error) {
       console.error('Error fetching active lotteries:', error);
+      return [];
+    }
+  },
+  
+  /**
+   * Fetches more lotteries for infinite scrolling
+   * @param lastKey The ID of the last lottery in the current list
+   * @param limit Maximum number of lotteries to retrieve
+   * @returns Promise with an array of lottery objects
+   */
+  async getMoreLotteries(lastKey: string | null, limit: number = 6): Promise<Lottery[]> {
+    try {
+      const lotteriesRef = ref(database, 'lotteries');
+      let activeQuery;
+      
+      if (lastKey) {
+        // Get reference to the last document
+        const lastLotteryRef = ref(database, `lotteries/${lastKey}`);
+        const lastLotterySnapshot = await get(lastLotteryRef);
+        
+        if (lastLotterySnapshot.exists()) {
+          // Create a query to get items after the last key
+          activeQuery = query(
+            lotteriesRef, 
+            orderByChild('status'), 
+            equalTo('active'),
+            startAfter(lastLotterySnapshot.val().createdAt || 0),
+            limitToLast(limit)
+          );
+        } else {
+          // Fallback if last lottery doesn't exist
+          activeQuery = query(
+            lotteriesRef,
+            orderByChild('status'),
+            equalTo('active'),
+            limitToLast(limit)
+          );
+        }
+      } else {
+        // Initial query without lastKey
+        activeQuery = query(
+          lotteriesRef,
+          orderByChild('status'),
+          equalTo('active'),
+          limitToLast(limit)
+        );
+      }
+      
+      const snapshot = await get(activeQuery);
+      
+      const lotteries: Lottery[] = [];
+      if (snapshot.exists()) {
+        snapshot.forEach((childSnapshot) => {
+          lotteries.push({
+            id: childSnapshot.key as string,
+            ...childSnapshot.val()
+          });
+        });
+      }
+      
+      return lotteries;
+    } catch (error) {
+      console.error('Error fetching more lotteries:', error);
       return [];
     }
   },
