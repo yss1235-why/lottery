@@ -11,6 +11,7 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import TicketGrid from '@/components/lotteries/TicketGrid';
+import DrawSection from '@/components/lotteries/DrawSection';
 import { analyticsService } from '@/services/analytics-service';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson } from 'react-icons/md';
@@ -96,6 +97,13 @@ export default function LotteryDetailPage() {
     // Check if lottery status is active and there are tickets available
     return lottery.status === 'active' && 
            (lottery.ticketsBooked || 0) < lottery.ticketCapacity;
+  };
+  
+  // Function to check if lottery is in drawing or completed state
+  const isDrawingOrCompleted = () => {
+    if (!lottery) return false;
+    
+    return lottery.status === 'drawing' || lottery.status === 'completed';
   };
   
   // Function to check if lottery draw time has passed (for display purposes only)
@@ -226,17 +234,25 @@ export default function LotteryDetailPage() {
               <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
                 <div className="text-neutral-light/70">Status:</div>
                 <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  canBookTickets() 
+                  lottery.status === 'active'
                     ? hasDrawTimePassed() 
-                      ? 'bg-alert/20 text-alert' // Draw time passed but still bookable
+                      ? 'bg-alert/20 text-alert' // Draw time passed but still active
                       : 'bg-success/20 text-success' // Active and within draw time
-                    : 'bg-accent/20 text-accent' // Closed
+                    : lottery.status === 'drawing'
+                    ? 'bg-secondary/20 text-secondary' // Drawing in progress
+                    : lottery.status === 'completed'
+                    ? 'bg-prize-gold/20 text-prize-gold' // Completed
+                    : 'bg-accent/20 text-accent' // Other status
                 }`}>
-                  {canBookTickets() 
+                  {lottery.status === 'active'
                     ? hasDrawTimePassed() 
-                      ? 'Extended' // Draw time passed but still bookable
+                      ? 'Extended' // Draw time passed but still active
                       : 'Active' // Active and within draw time
-                    : 'Closed' // Closed
+                    : lottery.status === 'drawing'
+                    ? 'Drawing' // Drawing in progress
+                    : lottery.status === 'completed'
+                    ? 'Completed' // Completed
+                    : 'Closed' // Other status
                   }
                 </div>
               </div>
@@ -304,8 +320,12 @@ export default function LotteryDetailPage() {
         </div>
       </div>
       
-      {/* Ticket Selection Section - Show if tickets can be booked */}
-      {canBookTickets() ? (
+      {/* Render either Ticket Selection or Draw Section based on lottery status */}
+      {isDrawingOrCompleted() ? (
+        <div className="mt-8 mx-4">
+          <DrawSection lotteryId={lotteryId} />
+        </div>
+      ) : canBookTickets() ? (
         <div className="mt-8">
           {hasDrawTimePassed() && (
             <div className="bg-alert/10 mx-4 p-3 rounded-lg mb-4 text-center">
