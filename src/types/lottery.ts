@@ -5,7 +5,7 @@ export interface Lottery {
   agentId?: string;
   description?: string;
   drawTime: string;
-  status?: 'active' | 'completed' | 'cancelled';
+  status?: 'active' | 'completed' | 'cancelled' | 'drawing';
   type?: 'standard' | 'game';
   frequency?: 'weekly' | 'monthly' | 'special';
   ticketPrice?: number;
@@ -28,6 +28,7 @@ export interface Lottery {
     gameId?: string;
     serverId?: string;
   };
+  drawId?: string;
   
   // Legacy properties for compatibility with existing components
   theme?: {
