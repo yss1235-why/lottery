@@ -1,4 +1,5 @@
 // File path: src/types/draw-sequence.ts
+
 /**
  * Represents a draw step in the animation sequence
  */
