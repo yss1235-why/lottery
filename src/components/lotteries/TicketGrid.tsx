@@ -1,7 +1,7 @@
+// File path: src/components/lotteries/TicketGrid.tsx
 'use client';
 
-// File path: src/components/lotteries/TicketGrid.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
 import BookingForm from './BookingForm';
@@ -9,6 +9,7 @@ import { generateWhatsAppLink } from '@/lib/contact';
 import { analyticsService } from '@/services/analytics-service';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { formatDate } from '@/lib/formatters';
+import { usePerformance } from '@/hooks/usePerformance';
 
 interface TicketGridProps {
   lotteryId: string;
@@ -38,6 +39,48 @@ interface BookingFormData {
   [key: string]: string | undefined;
 }
 
+// Define a memoized TicketItem component to prevent unnecessary re-renders
+const TicketItem = memo(({ 
+  ticket, 
+  isSelected, 
+  onSelect 
+}: { 
+  ticket: { 
+    number: number; 
+    booked: boolean; 
+    playerName?: string;
+  }; 
+  isSelected: boolean; 
+  onSelect: () => void; 
+}) => {
+  return (
+    <div
+      onClick={ticket.booked ? undefined : onSelect}
+      className={`ticket-item aspect-square flex flex-col items-center justify-center rounded-lg text-center cursor-pointer transition-all duration-200 ${
+        ticket.booked
+          ? 'bg-neutral-dark/50 text-neutral-light/50'
+          : isSelected
+          ? 'bg-secondary text-white scale-105'
+          : 'bg-neutral-dark hover:bg-secondary/70 text-white'
+      }`}
+    >
+      <div className="ticket-number text-lg font-bold">{ticket.number}</div>
+      {ticket.booked && (
+        <>
+          <div className="ticket-status text-xs mb-1">Booked</div>
+          {ticket.playerName && (
+            <div className="player-name text-xs bg-neutral-light/10 px-2 py-1 rounded-full truncate max-w-full">
+              {ticket.playerName}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+});
+
+TicketItem.displayName = 'TicketItem';
+
 export default function TicketGrid({ lotteryId }: TicketGridProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [lottery, setLottery] = useState<Lottery | null>(null);
@@ -45,6 +88,11 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
+  const { deviceTier } = usePerformance();
+  
+  // Track real-time update health
+  const [updateInterval, setUpdateInterval] = useState<number>(0);
   
   useEffect(() => {
     let isMounted = true;
@@ -55,17 +103,25 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
       try {
         setLoading(true);
 
-        // Subscribe to lottery data
+        // Subscribe to lottery data first
         unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, (lotteryData) => {
           if (isMounted && lotteryData) {
             setLottery(lotteryData);
-          }
-        });
-
-        // Subscribe to tickets for this lottery
-        unsubscribeTickets = firebaseService.subscribeToLotteryTickets(lotteryId, (ticketsData) => {
-          if (isMounted) {
-            setTickets(ticketsData);
+            
+            // Only after we have lottery data, subscribe to tickets
+            if (!unsubscribeTickets) {
+              // Use optimized ticket subscription with orderByChild
+              unsubscribeTickets = firebaseService.subscribeToLotteryTicketsOptimized(
+                lotteryId, 
+                (ticketsData) => {
+                  if (isMounted) {
+                    // Record the update time to measure performance
+                    setLastUpdateTime(Date.now());
+                    setTickets(ticketsData);
+                  }
+                }
+              );
+            }
           }
         });
 
@@ -84,22 +140,31 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
 
     loadData();
 
+    // Calculate update intervals to detect performance issues
+    const intervalTimer = setInterval(() => {
+      const now = Date.now();
+      if (lastUpdateTime > 0) {
+        setUpdateInterval(now - lastUpdateTime);
+      }
+    }, 5000);
+
     return () => {
       isMounted = false;
+      clearInterval(intervalTimer);
       if (unsubscribeTickets) unsubscribeTickets();
       if (unsubscribeLottery) unsubscribeLottery();
     };
-  }, [lotteryId]);
+  }, [lotteryId, lastUpdateTime]);
 
   // Check if the draw time has passed
-  const hasDrawTimePassed = () => {
+  const hasDrawTimePassed = useCallback(() => {
     if (!lottery) return false;
     const now = new Date().getTime();
     const drawTime = new Date(lottery.drawTime).getTime();
     return now > drawTime;
-  };
+  }, [lottery]);
 
-  const handleTicketClick = (ticketNumber: number, isBooked: boolean) => {
+  const handleTicketClick = useCallback((ticketNumber: number, isBooked: boolean) => {
     if (isBooked) return; // Don't do anything if the ticket is already booked
     
     setSelectedTicket(ticketNumber);
@@ -107,9 +172,9 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
     
     // Log analytics event
     analyticsService.logTicketSelection(lotteryId, ticketNumber.toString());
-  };
+  }, [lotteryId]);
 
-  const handleFormSubmit = async (formData: BookingFormData) => {
+  const handleFormSubmit = useCallback(async (formData: BookingFormData) => {
     // Generate WhatsApp message with form data and selected ticket
     if (!lottery || selectedTicket === null) return;
     
@@ -140,12 +205,35 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
     // Open WhatsApp
     window.open(whatsappUrl, '_blank');
     
+    // Add optimistic UI update for ticket selection
+    // This creates the illusion of responsiveness while waiting for Firebase update
+    const optimisticTickets = [...tickets];
+    const ticketIndex = optimisticTickets.findIndex(t => t.number === selectedTicket);
+    
+    if (ticketIndex === -1) {
+      // Create a temporary optimistic ticket
+      const newOptimisticTicket: Ticket = {
+        id: `optimistic-${selectedTicket}-${Date.now()}`,
+        number: selectedTicket,
+        booked: true,
+        playerName: formData.name,
+        lotteryId: lotteryId,
+        status: 'pending',
+        phoneNumber: formData.phoneNumber,
+        gameId: formData.gameId,
+        serverId: formData.serverId,
+      };
+      
+      setTickets([...optimisticTickets, newOptimisticTicket]);
+    }
+    
     // Close the form
     setShowForm(false);
     setSelectedTicket(null);
-  };
+  }, [lottery, selectedTicket, tickets, lotteryId]);
 
-  const generateTicketsArray = () => {
+  // Memoize the tickets array generation for performance
+  const allTickets = useMemo(() => {
     if (!lottery) return [];
     
     // Create an array representing all possible tickets
@@ -162,7 +250,12 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
     });
     
     return allTickets;
-  };
+  }, [lottery, tickets]);
+
+  // Memoize tickets remaining calculation
+  const ticketsRemaining = useMemo(() => {
+    return lottery ? lottery.ticketCapacity - (lottery.ticketsBooked || 0) : 0;
+  }, [lottery]);
 
   if (loading) {
     return (
@@ -186,9 +279,6 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
     );
   }
 
-  const allTickets = generateTicketsArray();
-  const ticketsRemaining = lottery ? lottery.ticketCapacity - (lottery.ticketsBooked || 0) : 0;
-
   return (
     <div className="ticket-grid-container p-4">
       <div className="flex justify-between items-center mb-4">
@@ -205,29 +295,12 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
           {/* Grid of tickets */}
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
             {allTickets.map((ticket) => (
-              <div
+              <TicketItem
                 key={ticket.number}
-                onClick={() => handleTicketClick(ticket.number, ticket.booked)}
-                className={`ticket-item aspect-square flex flex-col items-center justify-center rounded-lg text-center cursor-pointer transition-all duration-200 ${
-                  ticket.booked
-                    ? 'bg-neutral-dark/50 text-neutral-light/50'
-                    : selectedTicket === ticket.number
-                    ? 'bg-secondary text-white scale-105'
-                    : 'bg-neutral-dark hover:bg-secondary/70 text-white'
-                }`}
-              >
-                <div className="ticket-number text-lg font-bold">{ticket.number}</div>
-                {ticket.booked && (
-                  <>
-                    <div className="ticket-status text-xs mb-1">Booked</div>
-                    {ticket.playerName && (
-                      <div className="player-name text-xs bg-neutral-light/10 px-2 py-1 rounded-full truncate max-w-full">
-                        {ticket.playerName}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+                ticket={ticket}
+                isSelected={selectedTicket === ticket.number}
+                onSelect={() => handleTicketClick(ticket.number, ticket.booked)}
+              />
             ))}
           </div>
           
@@ -244,6 +317,13 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
                     {ticketsRemaining} tickets still available!
                   </p>
                 )}
+              </div>
+            )}
+            
+            {/* Debug info - only show in dev mode */}
+            {process.env.NODE_ENV === 'development' && updateInterval > 0 && (
+              <div className="text-xs text-neutral-light/50 mt-2">
+                Last update: {updateInterval}ms ago
               </div>
             )}
           </div>
