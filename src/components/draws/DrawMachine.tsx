@@ -26,6 +26,8 @@ interface DrawMachineProps {
   lotteryId: string;
   drawId?: string;
   isAgent?: boolean;
+  isPopup?: boolean; // New prop to handle popup display mode
+  onDrawComplete?: () => void; // New callback for draw completion
 }
 
 // Define status constants to avoid type issues
@@ -36,7 +38,13 @@ const REVEALING_STATUS = 'revealing';
 const CELEBRATING_STATUS = 'celebrating';
 const COMPLETE_STATUS = 'complete';
 
-export default function DrawMachine({ lotteryId, drawId, isAgent = false }: DrawMachineProps) {
+export default function DrawMachine({ 
+  lotteryId, 
+  drawId, 
+  isAgent = false, 
+  isPopup = false,
+  onDrawComplete
+}: DrawMachineProps) {
   const [lottery, setLottery] = useState<Lottery | null>(null);
   const [drawSequence, setDrawSequence] = useState<DrawSequence | null>(null);
   const [tickets, setTickets] = useState<AnimatedTicket[]>([]);
@@ -79,9 +87,17 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           loadDrawSequence(drawId);
         } else {
           // Try to get the latest draw sequence for this lottery
-          const latestDraw = await firebaseService.getLatestDrawSequenceForLottery(lotteryId);
-          if (latestDraw) {
-            loadDrawSequence(latestDraw.id);
+          try {
+            const latestDraw = await firebaseService.getLatestDrawSequenceForLottery(lotteryId);
+            if (latestDraw) {
+              loadDrawSequence(latestDraw.id);
+            } else {
+              setDrawSequence(null);
+              setLoading(false);
+            }
+          } catch (err) {
+            console.error('Error fetching latest draw:', err);
+            setLoading(false);
           }
         }
         
@@ -123,6 +139,13 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
       if (unsubscribeDraw) unsubscribeDraw();
     };
   }, [lotteryId, drawId, machineState]);
+  
+  // Handle draw completion
+  useEffect(() => {
+    if (machineState.status === COMPLETE_STATUS && onDrawComplete) {
+      onDrawComplete();
+    }
+  }, [machineState.status, onDrawComplete]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -461,7 +484,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
         <div 
           ref={containerRef}
           className="draw-machine-container relative bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden"
-          style={{ height: '400px' }}
+          style={{ height: isPopup ? '350px' : '400px' }}
         >
           {/* Tickets Container */}
           <div 
@@ -593,7 +616,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
         </div>
         
         {/* Agent Controls - Only shown to agents */}
-        {isAgent && (
+        {isAgent && !isPopup && (
           <div className="agent-controls mt-4 bg-neutral-dark/50 p-4 rounded-lg">
             <h3 className="text-md font-bold mb-3">Agent Controls</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -636,7 +659,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
   };
   
   return (
-    <div className="draw-machine pb-6">
+    <div className={`draw-machine ${isPopup ? 'in-popup' : ''} pb-6`}>
       <h2 className="text-xl font-bold mb-4">
         {lottery ? lottery.name : 'Lottery Draw'}
       </h2>
@@ -662,6 +685,7 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           background-color: #FFD700;
           box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
           color: #000;
+          z-index: 10;
         }
         
         .draw-ticket.winning {
@@ -694,6 +718,14 @@ export default function DrawMachine({ lotteryId, drawId, isAgent = false }: Draw
           height: 10px;
           border-radius: 50%;
           pointer-events: none;
+        }
+        
+        .draw-machine.in-popup .draw-machine-container {
+          height: 350px;
+        }
+        
+        .draw-machine.in-popup .agent-controls {
+          display: none;
         }
       `}</style>
     </div>
