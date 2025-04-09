@@ -139,7 +139,8 @@ export default function LotteryDetailPage() {
       }
     };
     
-    const loadDrawSequence = (sequenceId) => {
+    // Add the type annotation for sequenceId
+    const loadDrawSequence = (sequenceId: string): void => {
       unsubscribeDraw();
       unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
         if (isMounted && drawData) {
