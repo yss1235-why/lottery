@@ -208,7 +208,7 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
               <div
                 key={ticket.number}
                 onClick={() => handleTicketClick(ticket.number, ticket.booked)}
-                className={`ticket-item aspect-square flex items-center justify-center rounded-lg text-center cursor-pointer transition-all duration-200 ${
+                className={`ticket-item aspect-square flex flex-col items-center justify-center rounded-lg text-center cursor-pointer transition-all duration-200 ${
                   ticket.booked
                     ? 'bg-neutral-dark/50 text-neutral-light/50'
                     : selectedTicket === ticket.number
@@ -216,12 +216,17 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
                     : 'bg-neutral-dark hover:bg-secondary/70 text-white'
                 }`}
               >
-                <div>
-                  <div className="ticket-number text-lg font-bold">{ticket.number}</div>
-                  {ticket.booked && (
-                    <div className="ticket-status text-xs">Booked</div>
-                  )}
-                </div>
+                <div className="ticket-number text-lg font-bold">{ticket.number}</div>
+                {ticket.booked && (
+                  <>
+                    <div className="ticket-status text-xs mb-1">Booked</div>
+                    {ticket.playerName && (
+                      <div className="player-name text-xs bg-neutral-light/10 px-2 py-1 rounded-full truncate max-w-full">
+                        {ticket.playerName}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ))}
           </div>
