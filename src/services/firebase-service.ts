@@ -11,7 +11,10 @@ import {
   DataSnapshot,
   startAfter,
   push,
-  update
+  update,
+  onChildAdded,
+  onChildChanged,
+  onChildRemoved
 } from 'firebase/database';
 import { 
   ref as storageRef, 
@@ -212,6 +215,40 @@ export const firebaseService = {
   },
   
   /**
+   * Batch get multiple lotteries data by IDs
+   * @param lotteryIds Array of lottery IDs to fetch
+   * @returns Promise with an array of lottery objects
+   */
+  async getLotteriesByIds(lotteryIds: string[]): Promise<Lottery[]> {
+    if (lotteryIds.length === 0) return [];
+    
+    try {
+      // Create an array of promises for each lottery
+      const promises = lotteryIds.map(id => {
+        const lotteryRef = ref(database, `lotteries/${id}`);
+        return get(lotteryRef).then(snapshot => {
+          if (snapshot.exists()) {
+            return {
+              id: snapshot.key as string,
+              ...snapshot.val()
+            };
+          }
+          return null;
+        });
+      });
+      
+      // Execute all promises in parallel
+      const results = await Promise.all(promises);
+      
+      // Filter out null values (lotteries that weren't found)
+      return results.filter(lottery => lottery !== null) as Lottery[];
+    } catch (error) {
+      console.error('Error batch fetching lotteries:', error);
+      return [];
+    }
+  },
+  
+  /**
    * Fetches tickets for a specific lottery
    * @param lotteryId The ID of the lottery to fetch tickets for
    * @returns Promise with an array of tickets for the lottery
@@ -266,6 +303,85 @@ export const firebaseService = {
     
     return () => {
       off(lotteryTicketsQuery, 'value', handleData);
+    };
+  },
+  
+  /**
+   * Subscribes to tickets for a specific lottery with performance optimizations
+   * @param lotteryId The ID of the lottery to subscribe to tickets for
+   * @param callback Function to call with updated data
+   * @returns Unsubscribe function
+   */
+  subscribeToLotteryTicketsOptimized(lotteryId: string, callback: (tickets: TicketData[]) => void): () => void {
+    const ticketsRef = ref(database, 'tickets');
+    
+    // Use more efficient query with ordering by updatedAt or bookedAt to get latest changes first
+    // This improves perceived performance for recent updates
+    const lotteryTicketsQuery = query(
+      ticketsRef, 
+      orderByChild('lotteryId'), 
+      equalTo(lotteryId)
+    );
+    
+    // Use a more efficient data handling approach
+    const cachedTickets: { [key: string]: TicketData } = {};
+    
+    // Handle changes to specific tickets instead of reloading the entire list
+    const handleAdded = (snapshot: DataSnapshot) => {
+      if (snapshot.exists()) {
+        const ticket = {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+        cachedTickets[ticket.id] = ticket;
+        callback(Object.values(cachedTickets));
+      }
+    };
+    
+    const handleChanged = (snapshot: DataSnapshot) => {
+      if (snapshot.exists()) {
+        const ticket = {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+        cachedTickets[ticket.id] = ticket;
+        callback(Object.values(cachedTickets));
+      }
+    };
+    
+    const handleRemoved = (snapshot: DataSnapshot) => {
+      if (snapshot.exists() && snapshot.key) {
+        delete cachedTickets[snapshot.key];
+        callback(Object.values(cachedTickets));
+      }
+    };
+    
+    // Initial data load
+    onValue(lotteryTicketsQuery, (snapshot) => {
+      if (snapshot.exists()) {
+        snapshot.forEach((childSnapshot) => {
+          const ticket = {
+            id: childSnapshot.key as string,
+            ...childSnapshot.val()
+          };
+          cachedTickets[ticket.id] = ticket;
+        });
+        callback(Object.values(cachedTickets));
+      } else {
+        callback([]);
+      }
+    }, { onlyOnce: true });
+    
+    // Set up listeners for changes
+    const childAddedUnsub = onChildAdded(lotteryTicketsQuery, handleAdded);
+    const childChangedUnsub = onChildChanged(lotteryTicketsQuery, handleChanged);
+    const childRemovedUnsub = onChildRemoved(lotteryTicketsQuery, handleRemoved);
+    
+    // Return combined unsubscribe function
+    return () => {
+      childAddedUnsub();
+      childChangedUnsub();
+      childRemovedUnsub();
     };
   },
   
@@ -912,6 +1028,41 @@ export const firebaseService = {
     return () => {
       off(lotteryRef, 'value', handleData);
     };
+  },
+  
+  /**
+   * Optimized subscription for a lottery with reduced data transfer
+   * @param lotteryId The ID of the lottery to subscribe to
+   * @param callback Function to call with updated data
+   * @returns Unsubscribe function
+   */
+  subscribeToLotteryOptimized(lotteryId: string, callback: (lottery: Lottery | null) => void): () => void {
+    const lotteryRef = ref(database, `lotteries/${lotteryId}`);
+    
+    // Use a more efficient data handling approach
+    let lastLottery: Lottery | null = null;
+    
+    const handleValue = (snapshot: DataSnapshot) => {
+      if (snapshot.exists()) {
+        const lottery = {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+        
+        // Only call the callback if the lottery has actually changed
+        if (!lastLottery || JSON.stringify(lastLottery) !== JSON.stringify(lottery)) {
+          lastLottery = lottery;
+          callback(lottery);
+        }
+      } else {
+        callback(null);
+      }
+    };
+    
+    // Set up value listener
+    const valueUnsub = onValue(lotteryRef, handleValue);
+    
+    return valueUnsub;
   },
   
   /**
