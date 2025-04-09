@@ -1,40 +1,54 @@
 // File path: src/app/lotteries/[id]/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
+import { DrawSequence } from '@/types/draw-sequence';
+import { useAuth } from '@/contexts/AuthContext';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import ProgressBar from '@/components/ui/ProgressBar';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import TicketGrid from '@/components/lotteries/TicketGrid';
-import DrawSection from '@/components/lotteries/DrawSection';
+import DrawMachine from '@/components/draws/DrawMachine';
 import { analyticsService } from '@/services/analytics-service';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson } from 'react-icons/md';
+import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, MdNotifications } from 'react-icons/md';
 
 export default function LotteryDetailPage() {
+  const { user } = useAuth();
   const { id } = useParams();
   // Convert id to string and provide a default value if it's undefined
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
   
   const [lottery, setLottery] = useState<Lottery | null>(null);
+  const [drawSequence, setDrawSequence] = useState<DrawSequence | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
+  const [isAgent, setIsAgent] = useState(false);
+  const [showDrawNotification, setShowDrawNotification] = useState(false);
+  const [showDrawPopup, setShowDrawPopup] = useState(false);
+  
+  // Track lottery status changes
+  const prevStatusRef = useRef<string | undefined>(lottery?.status);
   
   useEffect(() => {
     let isMounted = true;
-    let unsubscribe: () => void = () => {}; // Initialize with no-op function
+    let unsubscribeLottery: () => void = () => {};
+    let unsubscribeDraw: () => void = () => {};
 
     const loadData = async () => {
       try {
-        setLoading(true);
+        // Only set loading on initial load
+        if (isMounted && !lottery) {
+          setLoading(true);
+        }
         
-        // Check if lotteryId exists and has a valid value
+        // Ensure we have a valid lotteryId from params
         if (!lotteryId) {
           setError('Invalid lottery ID');
           setLoading(false);
@@ -42,12 +56,30 @@ export default function LotteryDetailPage() {
         }
         
         // Set up real-time subscription to lottery data
-        unsubscribe = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
-          if (isMounted && lotteryData) {
+        unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
+          if (!isMounted) return;
+          
+          if (lotteryData) {
             setLottery(lotteryData);
             
             // Log lottery view in analytics
             analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
+            
+            // Check if tickets are fully booked but draw hasn't started
+            const isFullyBooked = (lotteryData.ticketsBooked || 0) >= lotteryData.ticketCapacity;
+            if (isFullyBooked && lotteryData.status === 'active') {
+              setShowDrawNotification(true);
+            } else {
+              setShowDrawNotification(false);
+            }
+            
+            // Check if lottery status changed to 'drawing'
+            if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
+              setShowDrawPopup(true);
+            }
+            
+            // Update previous status ref
+            prevStatusRef.current = lotteryData.status;
             
             // Fetch agent/host information if agentId exists
             if (lotteryData.agentId) {
@@ -55,6 +87,11 @@ export default function LotteryDetailPage() {
                 const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
                 if (agentInfo && isMounted) {
                   setHostName(agentInfo.name || 'Unknown Host');
+                  
+                  // Check if current user is the agent
+                  if (user && agentInfo.uid === user.uid) {
+                    setIsAgent(true);
+                  }
                 }
               } catch (agentError) {
                 console.error('Error fetching agent information:', agentError);
@@ -63,9 +100,27 @@ export default function LotteryDetailPage() {
                 }
               }
             }
-          } else if (isMounted && !lotteryData) {
+            
+            // If lottery has a drawId, load the draw sequence
+            if (lotteryData.drawId) {
+              loadDrawSequence(lotteryData.drawId);
+            } else {
+              // Try to get the latest draw sequence for this lottery
+              try {
+                const latestDraw = await firebaseService.getLatestDrawSequenceForLottery(lotteryId);
+                if (latestDraw && isMounted) {
+                  loadDrawSequence(latestDraw.id);
+                }
+              } catch (err) {
+                console.error('Error fetching latest draw:', err);
+              }
+            }
+          } else {
             setError('Lottery not found or has been removed.');
           }
+          
+          // Clear loading state once data is received
+          setLoading(false);
         });
 
         setError(null);
@@ -73,36 +128,35 @@ export default function LotteryDetailPage() {
         console.error('Error loading lottery:', err);
         if (isMounted) {
           setError('Failed to load lottery data. Please try again.');
-        }
-      } finally {
-        if (isMounted) {
           setLoading(false);
         }
       }
     };
+    
+    const loadDrawSequence = (sequenceId: string) => {
+      unsubscribeDraw();
+      unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
+        if (isMounted && drawData) {
+          setDrawSequence(drawData);
+        }
+      });
+    };
 
-    loadData();
+    // Only load data if user is authenticated
+    if (user) {
+      loadData();
+    }
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribeLottery();
+      unsubscribeDraw();
     };
-  }, [lotteryId]);
-  
-  // Function to check if lottery tickets can be booked
-  // Allow booking if lottery status is active and tickets are available, regardless of timer
-  const canBookTickets = () => {
-    if (!lottery) return false;
-    
-    // Check if lottery status is active and there are tickets available
-    return lottery.status === 'active' && 
-           (lottery.ticketsBooked || 0) < lottery.ticketCapacity;
-  };
+  }, [lotteryId, user]); // Added user as dependency
   
   // Function to check if lottery is in drawing or completed state
   const isDrawingOrCompleted = () => {
     if (!lottery) return false;
-    
     return lottery.status === 'drawing' || lottery.status === 'completed';
   };
   
@@ -114,6 +168,29 @@ export default function LotteryDetailPage() {
     const drawTime = new Date(lottery.drawTime).getTime();
     
     return now > drawTime;
+  };
+  
+  // Function to start the draw (for agents)
+  const startDraw = async () => {
+    if (!lottery || !isAgent) return;
+    
+    try {
+      // Create a new draw sequence
+      const drawId = await firebaseService.createDrawSequence(lotteryId);
+      console.log('Created new draw sequence:', drawId);
+      
+      // Add first shuffle step
+      await firebaseService.addDrawStep(drawId, {
+        action: 'shuffle',
+        duration: 3
+      });
+      
+      // Show draw popup
+      setShowDrawPopup(true);
+    } catch (err) {
+      console.error('Error starting draw:', err);
+      setError('Failed to start the draw. Please try again.');
+    }
   };
   
   if (loading) {
@@ -320,28 +397,123 @@ export default function LotteryDetailPage() {
         </div>
       </div>
       
-      {/* Render either Ticket Selection or Draw Section based on lottery status */}
-      {isDrawingOrCompleted() ? (
-        <div className="mt-8 mx-4">
-          <DrawSection lotteryId={lotteryId} />
-        </div>
-      ) : canBookTickets() ? (
-        <div className="mt-8">
-          {hasDrawTimePassed() && (
-            <div className="bg-alert/10 mx-4 p-3 rounded-lg mb-4 text-center">
-              <p className="text-alert">
-                Draw time has passed, but tickets are still available for booking!
+      {/* Draw Notification - Show when tickets are fully booked but draw hasn't started */}
+      {showDrawNotification && lottery.status === 'active' && (
+        <div className="bg-prize-gold/10 mx-4 mt-4 p-4 rounded-lg border border-prize-gold/30">
+          <div className="flex items-center">
+            <MdNotifications className="text-prize-gold mr-3" size={24} />
+            <div>
+              <h3 className="font-bold text-lg text-prize-gold">Draw Coming Soon!</h3>
+              <p className="text-neutral-light/80">
+                All tickets have been booked. The lottery draw will start shortly.
               </p>
             </div>
+          </div>
+          
+          {isAgent && (
+            <div className="mt-3 pt-3 border-t border-prize-gold/20">
+              <button
+                onClick={startDraw}
+                className="w-full px-4 py-2 bg-prize-gold text-neutral-dark rounded-lg font-bold hover:bg-prize-gold/90 transition-colors"
+              >
+                Start Draw Now
+              </button>
+            </div>
           )}
-          <TicketGrid lotteryId={lotteryId} />
         </div>
-      ) : (
-        <div className="mt-8 p-4 bg-accent/10 rounded-lg mx-4 text-center">
-          <h3 className="text-lg font-bold mb-2">Lottery Not Available</h3>
-          <p className="text-neutral-light/70">
-            This lottery is no longer accepting bookings or has been fully booked.
-          </p>
+      )}
+      
+      {/* Main content area - Show either tickets or completed info */}
+      <div className="mt-6">
+        {isDrawingOrCompleted() ? (
+          <div className="mx-4">
+            <h2 className="text-xl font-bold mb-4">Lottery Results</h2>
+            {lottery.status === 'completed' ? (
+              <div className="bg-neutral-dark rounded-lg p-4">
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 bg-prize-gold/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <MdLocalPlay className="text-prize-gold" size={32} />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Draw Completed</h3>
+                  <p className="text-neutral-light/70 mb-4">
+                    This lottery draw has been completed.
+                  </p>
+                  
+                  {lottery.winners && lottery.winners.length > 0 ? (
+                    <div className="mt-4 space-y-3">
+                      <h4 className="font-bold text-lg">Winners</h4>
+                      {lottery.winners.map((winner, index) => (
+                        <div 
+                          key={index}
+                          className="bg-neutral-dark/50 p-3 rounded-lg flex items-center"
+                        >
+                          <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-bold">{winner.playerName}</div>
+                            <div className="text-sm text-neutral-light/70">
+                              Ticket #{winner.number}
+                            </div>
+                          </div>
+                          <div className="text-prize-gold">
+                            {winner.prizeName}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-neutral-light/70">
+                      No winner information available.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-neutral-dark rounded-lg p-4">
+                <p className="text-center text-neutral-light/70 mb-4">
+                  The draw for this lottery is currently in progress. Results will be available soon.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {hasDrawTimePassed() && (
+              <div className="bg-alert/10 mx-4 p-3 rounded-lg mb-4 text-center">
+                <p className="text-alert">
+                  Draw time has passed, but tickets are still available for booking!
+                </p>
+              </div>
+            )}
+            <TicketGrid lotteryId={lotteryId} />
+          </div>
+        )}
+      </div>
+      
+      {/* Draw Popup Modal */}
+      {showDrawPopup && drawSequence && (
+        <div className="fixed inset-0 bg-neutral-dark/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
+              <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
+              <button 
+                onClick={() => setShowDrawPopup(false)}
+                className="text-neutral-light/70 hover:text-white"
+                aria-label="Close"
+              >
+                <MdClose size={24} />
+              </button>
+            </div>
+            
+            <div className="p-4">
+              <DrawMachine 
+                lotteryId={lotteryId} 
+                drawId={drawSequence.id} 
+                isAgent={isAgent} 
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>
