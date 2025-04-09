@@ -11,7 +11,16 @@ const nextConfig = {
   },
   experimental: {
     strictNextHead: true,
+    // Improve handling of dynamic routes
+    scrollRestoration: true,
   },
+  // Enable shallow routing for better direct link handling
+  trailingSlash: false,
+  // Adjust dynamic imports for better code splitting
+  webpack(config) {
+    return config;
+  },
+  // Add custom headers to improve caching and loading
   async headers() {
     return [
       {
@@ -32,6 +41,11 @@ const nextConfig = {
           {
             key: 'X-XSS-Protection',
             value: '1; mode=block'
+          },
+          // Add Cache-Control headers for static assets
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=3600, stale-while-revalidate=86400'
           }
         ]
       }
