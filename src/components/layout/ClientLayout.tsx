@@ -6,7 +6,6 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import AuthGuard from '@/components/auth/AuthGuard';
 import Navigation from '@/components/layout/Navigation';
-import ContactFab from '@/components/layout/ContactFab';
 import ThemeSwitcher from '@/components/ui/ThemeSwitcher';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 import NotificationSystem from '@/components/ui/NotificationSystem';
@@ -35,7 +34,7 @@ export default function ClientLayout({
           <main className="min-h-screen relative">
             {children}
             <Navigation />
-            <ContactFab />
+            {/* ContactFab component removed as requested */}
             <ThemeSwitcher />
             <NotificationSystem />
           </main>
