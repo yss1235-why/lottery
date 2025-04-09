@@ -1,8 +1,9 @@
 // File path: src/components/layout/Navigation.tsx
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   MdHome, 
   MdDateRange,
@@ -12,6 +13,13 @@ import {
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  
+  // Handle client-side mounting to prevent hydration issues
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const navItems = [
     { path: '/', label: 'Home', icon: <MdHome size={24} /> },
@@ -20,13 +28,39 @@ export default function Navigation() {
     { path: '/history', label: 'History', icon: <MdHistory size={24} /> },
   ];
 
+  // Handler for direct navigation
+  const handleNavigation = (path: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    router.push(path);
+  };
+
+  // If the component hasn't mounted yet, render a placeholder to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 bg-neutral-dark shadow-lg z-10">
+        <div className="flex justify-around items-center h-16">
+          {navItems.map((item) => (
+            <div
+              key={item.path}
+              className="flex flex-col items-center justify-center w-full h-full text-xs text-neutral-light/70"
+            >
+              {item.icon}
+              <span className="mt-1">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-neutral-dark shadow-lg z-10">
       <div className="flex justify-around items-center h-16">
         {navItems.map((item) => (
-          <Link
+          <a
             key={item.path}
             href={item.path}
+            onClick={handleNavigation(item.path)}
             className={`flex flex-col items-center justify-center w-full h-full text-xs ${
               pathname === item.path 
                 ? 'text-secondary' 
@@ -35,7 +69,7 @@ export default function Navigation() {
           >
             {item.icon}
             <span className="mt-1">{item.label}</span>
-          </Link>
+          </a>
         ))}
       </div>
     </nav>
