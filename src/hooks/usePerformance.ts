@@ -14,7 +14,7 @@ export function usePerformance() {
   
   useEffect(() => {
     // Detect device performance tier
-    const detectPerformance = () => {
+    const detectPerformance = (): DeviceTier => {
       // Check for battery API to detect mobile devices
       const hasBattery = 'getBattery' in navigator;
       
@@ -34,7 +34,7 @@ export function usePerformance() {
     };
     
     // Run benchmark to confirm device tier
-    const runBenchmark = () => {
+    const runBenchmark = (): DeviceTier => {
       const startTime = performance.now();
       // Computation intensive operation
       for (let i = 0; i < 1000000; i++) {
@@ -54,7 +54,7 @@ export function usePerformance() {
     };
     
     // Detect connection type
-    const detectConnection = () => {
+    const detectConnection = (): ConnectionType => {
       const connection = (navigator as { connection?: { effectiveType?: string } }).connection;
       if (connection && connection.effectiveType) {
         return connection.effectiveType as ConnectionType;
@@ -68,9 +68,16 @@ export function usePerformance() {
     // Only run the benchmark if we have time
     if (initialTier !== 'low') {
       const benchmarkTier = runBenchmark();
-      // Use the lower of the two tiers
-      setDeviceTier(initialTier === 'low' || benchmarkTier === 'low' ? 'low' : 
-                   initialTier === 'medium' || benchmarkTier === 'medium' ? 'medium' : 'high');
+      
+      // Determine the final tier (take the lower tier for performance safety)
+      let finalTier: DeviceTier = 'high';
+      if (initialTier === 'low' || benchmarkTier === 'low') {
+        finalTier = 'low';
+      } else if (initialTier === 'medium' || benchmarkTier === 'medium') {
+        finalTier = 'medium';
+      }
+      
+      setDeviceTier(finalTier);
     } else {
       setDeviceTier(initialTier);
     }
