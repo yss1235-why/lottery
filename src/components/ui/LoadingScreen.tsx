@@ -4,13 +4,18 @@
 import { useEffect, useState } from 'react';
 import { MdCasino } from 'react-icons/md';
 
-export default function LoadingScreen() {
-  const [loadingText, setLoadingText] = useState('Loading');
+interface LoadingScreenProps {
+  message?: string;
+}
+
+export default function LoadingScreen({ message = 'Loading' }: LoadingScreenProps) {
+  const [loadingText, setLoadingText] = useState(message);
+  const [dots, setDots] = useState('');
   
   useEffect(() => {
     const interval = setInterval(() => {
-      setLoadingText((current) => {
-        if (current === 'Loading...') return 'Loading';
+      setDots(current => {
+        if (current.length >= 3) return '';
         return current + '.';
       });
     }, 500);
@@ -18,8 +23,13 @@ export default function LoadingScreen() {
     return () => clearInterval(interval);
   }, []);
   
+  // Update loading text whenever dots change
+  useEffect(() => {
+    setLoadingText(`${message}${dots}`);
+  }, [dots, message]);
+  
   return (
-    <div className="fixed inset-0 bg-primary flex flex-col items-center justify-center">
+    <div className="fixed inset-0 bg-primary flex flex-col items-center justify-center z-50">
       <div className="animate-float">
         <MdCasino size={64} className="text-prize-gold mb-4" />
       </div>
