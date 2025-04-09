@@ -34,7 +34,7 @@ export default function ClientLayout({
           <main className="min-h-screen relative">
             {children}
             <Navigation />
-            {/* ContactFab component removed as requested */}
+            {/* WhatsApp button (ContactFab) has been removed as requested */}
             <ThemeSwitcher />
             <NotificationSystem />
           </main>
