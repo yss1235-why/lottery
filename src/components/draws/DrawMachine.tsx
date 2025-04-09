@@ -141,10 +141,19 @@ export default function DrawMachine({
   
   // Handle draw completion
   useEffect(() => {
-    if (machineState.status === COMPLETE_STATUS && onDrawComplete) {
-      onDrawComplete();
+    if (machineState.status === COMPLETE_STATUS) {
+      // Ensure we notify the parent component when draw completes
+      if (onDrawComplete) {
+        onDrawComplete();
+      }
+      
+      // If there's a winner, we can optionally send a notification here
+      if (drawSequence && drawSequence.winners && drawSequence.winners.length > 0) {
+        // This would typically be handled by the global notification system
+        // But we could emit an event or call a notification function here
+      }
     }
-  }, [machineState.status, onDrawComplete]);
+  }, [machineState.status, onDrawComplete, drawSequence]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
