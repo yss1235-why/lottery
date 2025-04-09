@@ -742,6 +742,56 @@ export const firebaseService = {
   },
 
   /**
+   * Adds a multi-prize draw sequence with steps for each prize
+   * @param drawId The ID of the draw sequence
+   * @param ticketNumbers Array of ticket numbers for each prize
+   * @param prizeIndices Array of prize indices corresponding to each ticket
+   * @returns Promise that resolves when all steps are added
+   */
+  async addPrizeDrawSequence(
+    drawId: string, 
+    ticketNumbers: number[], 
+    prizeIndices: number[]
+  ): Promise<void> {
+    try {
+      // Start with a shuffle step
+      await this.addDrawStep(drawId, {
+        action: 'shuffle',
+        duration: 3
+      });
+      
+      // Add steps for each prize/ticket combination
+      for (let i = 0; i < ticketNumbers.length; i++) {
+        // Add selection step
+        await this.addDrawStep(drawId, {
+          action: 'select',
+          ticketNumber: ticketNumbers[i]
+        });
+        
+        // Add reveal step
+        await this.addDrawStep(drawId, {
+          action: 'reveal',
+          ticketNumber: ticketNumbers[i],
+          prizeIndex: prizeIndices[i]
+        });
+        
+        // Small delay between prizes for better visual effect
+        if (i < ticketNumbers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      // End with celebration step
+      await this.addDrawStep(drawId, {
+        action: 'celebrate'
+      });
+    } catch (error) {
+      console.error(`Error adding prize draw sequence for draw ${drawId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
    * Adds a winner to a draw sequence
    * @param drawId The ID of the draw sequence
    * @param winner The winner to add
