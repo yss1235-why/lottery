@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { formatCurrency } from '@/lib/formatters';
 import { Lottery } from '@/types/lottery';
 import { DrawWinner } from '@/types/draw-sequence';
-import { MdEmojiEvents, MdNotifications, MdLocalPlay } from 'react-icons/md';
+import { MdEmojiEvents, MdLocalPlay } from 'react-icons/md';
+import { firebaseService } from '@/services/firebase-service';
 
 interface Notification {
   id: string;
