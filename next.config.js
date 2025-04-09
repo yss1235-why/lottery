@@ -1,3 +1,4 @@
+// File path: next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -14,6 +15,15 @@ const nextConfig = {
   },
   trailingSlash: false,
   webpack: (config) => {
+    // Add performance optimizations for webpack
+    config.optimization = {
+      ...config.optimization,
+      splitChunks: {
+        chunks: 'all',
+        maxInitialRequests: 25,
+        minSize: 20000
+      }
+    };
     return config;
   },
   async headers() {
