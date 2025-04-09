@@ -1,5 +1,10 @@
-import type { Configuration as WebpackConfiguration } from 'webpack';
+// File: next.config.ts
 import type { NextConfig } from 'next';
+
+// Define a simple type for the webpack config function
+interface WebpackConfigFn {
+  (config: any): any;
+}
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -12,16 +17,15 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     strictNextHead: true,
-    // Improve handling of dynamic routes
     scrollRestoration: true,
   },
-  // Enable shallow routing for better direct link handling
   trailingSlash: false,
-  // Properly typed webpack configuration
-  webpack: (config: WebpackConfiguration) => {
+  
+  // Use a type assertion to handle the webpack configuration
+  webpack: (config: any) => {
     return config;
-  },
-  // Add custom headers to improve caching and loading
+  } as WebpackConfigFn,
+  
   async headers() {
     return [
       {
@@ -43,7 +47,6 @@ const nextConfig: NextConfig = {
             key: 'X-XSS-Protection',
             value: '1; mode=block'
           },
-          // Add Cache-Control headers for static assets
           {
             key: 'Cache-Control',
             value: 'public, max-age=3600, stale-while-revalidate=86400'
