@@ -1,7 +1,7 @@
 // File path: src/components/ui/OptimizedImage.tsx
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import { useState, memo } from 'react';
 import Image from 'next/image';
 import { usePerformance } from '@/hooks/usePerformance';
 
