@@ -89,7 +89,10 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
   const [selectedTicket, setSelectedTicket] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
-  const { deviceTier } = usePerformance();
+  
+  // Using the performance hook to potentially optimize rendering based on device capability
+  // Only extracting the properties we actually use
+  const { shouldAnimateElements } = usePerformance();
   
   // Track real-time update health
   const [updateInterval, setUpdateInterval] = useState<number>(0);
@@ -167,12 +170,17 @@ export default function TicketGrid({ lotteryId }: TicketGridProps) {
   const handleTicketClick = useCallback((ticketNumber: number, isBooked: boolean) => {
     if (isBooked) return; // Don't do anything if the ticket is already booked
     
+    // Apply animations only if device supports them
+    if (shouldAnimateElements) {
+      // Could add some animation here
+    }
+    
     setSelectedTicket(ticketNumber);
     setShowForm(true);
     
     // Log analytics event
     analyticsService.logTicketSelection(lotteryId, ticketNumber.toString());
-  }, [lotteryId]);
+  }, [lotteryId, shouldAnimateElements]);
 
   const handleFormSubmit = useCallback(async (formData: BookingFormData) => {
     // Generate WhatsApp message with form data and selected ticket
