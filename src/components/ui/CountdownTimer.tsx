@@ -1,14 +1,15 @@
+// File path: src/components/ui/CountdownTimer.tsx
 'use client';
 
-// File path: src/components/ui/CountdownTimer.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
+import { usePerformance } from '@/hooks/usePerformance';
 
 interface CountdownTimerProps {
   targetDate: string;
   className?: string;
 }
 
-export default function CountdownTimer({ targetDate, className = '' }: CountdownTimerProps) {
+const CountdownTimer = memo(({ targetDate, className = '' }: CountdownTimerProps) => {
   const [timeRemaining, setTimeRemaining] = useState({
     days: 0,
     hours: 0,
@@ -16,8 +17,16 @@ export default function CountdownTimer({ targetDate, className = '' }: Countdown
     seconds: 0,
     isExpired: false
   });
+  
+  const { deviceTier } = usePerformance();
 
   useEffect(() => {
+    // Determine update frequency based on device tier
+    // This reduces CPU usage on lower-end devices
+    const updateFrequency = deviceTier === 'low' ? 5000 : // 5 seconds
+                           deviceTier === 'medium' ? 1000 : // 1 second
+                           1000; // 1 second for high-end devices
+    
     const calculateTimeRemaining = () => {
       const target = new Date(targetDate).getTime();
       const now = new Date().getTime();
@@ -38,7 +47,7 @@ export default function CountdownTimer({ targetDate, className = '' }: Countdown
       const days = Math.floor(difference / (1000 * 60 * 60 * 24));
       const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+      const seconds = deviceTier === 'low' ? 0 : Math.floor((difference % (1000 * 60)) / 1000);
       
       setTimeRemaining({
         days,
@@ -52,11 +61,11 @@ export default function CountdownTimer({ targetDate, className = '' }: Countdown
     // Initial calculation
     calculateTimeRemaining();
     
-    // Update the countdown every second
-    const interval = setInterval(calculateTimeRemaining, 1000);
+    // Update the countdown at specified frequency
+    const interval = setInterval(calculateTimeRemaining, updateFrequency);
     
     return () => clearInterval(interval);
-  }, [targetDate]);
+  }, [targetDate, deviceTier]);
   
   // Calculate display format based on time remaining
   const displayFormat = () => {
@@ -147,4 +156,8 @@ export default function CountdownTimer({ targetDate, className = '' }: Countdown
       </div>
     </div>
   );
-}
+});
+
+CountdownTimer.displayName = 'CountdownTimer';
+
+export default CountdownTimer;
