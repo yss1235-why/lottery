@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   MdHome, 
-  MdOndemandVideo,
   MdDateRange,
-  MdEvent
+  MdEvent,
+  MdHistory
 } from 'react-icons/md';
 
 export default function Navigation() {
@@ -15,9 +15,9 @@ export default function Navigation() {
   
   const navItems = [
     { path: '/', label: 'Home', icon: <MdHome size={24} /> },
-    { path: '/active-draws', label: 'Active Draws', icon: <MdOndemandVideo size={24} /> },
     { path: '/weekly', label: 'Weekly', icon: <MdDateRange size={24} /> },
     { path: '/monthly', label: 'Monthly', icon: <MdEvent size={24} /> },
+    { path: '/history', label: 'History', icon: <MdHistory size={24} /> },
   ];
 
   return (
