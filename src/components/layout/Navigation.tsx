@@ -30,12 +30,12 @@ export default function Navigation() {
 
   // Direct navigation function that uses window.location
   // This is more reliable than router.push in some cases
-  const navigateTo = useCallback((path) => {
+  const navigateTo = useCallback((path: string) => {
     window.location.href = path;
   }, []);
 
   // Determine if a nav item is active
-  const isActive = (path) => {
+  const isActive = (path: string) => {
     if (path === '/') return pathname === '/';
     return pathname === path || pathname.startsWith(`${path}/`);
   };
