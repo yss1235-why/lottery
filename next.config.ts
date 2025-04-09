@@ -17,7 +17,7 @@ const nextConfig = {
   // Enable shallow routing for better direct link handling
   trailingSlash: false,
   // Adjust dynamic imports for better code splitting
-  webpack(config) {
+  webpack: (config) => {
     return config;
   },
   // Add custom headers to improve caching and loading
