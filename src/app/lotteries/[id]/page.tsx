@@ -32,9 +32,11 @@ export default function LotteryDetailPage() {
   const [isAgent, setIsAgent] = useState(false);
   const [showDrawNotification, setShowDrawNotification] = useState(false);
   const [showDrawPopup, setShowDrawPopup] = useState(false);
+  const [isDrawPopupDismissed, setIsDrawPopupDismissed] = useState(false);
   
   // Track lottery status changes
   const prevStatusRef = useRef<string | undefined>(lottery?.status);
+  const drawPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   useEffect(() => {
     let isMounted = true;
@@ -66,7 +68,9 @@ export default function LotteryDetailPage() {
             analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
             
             // Check if tickets are fully booked but draw hasn't started
-            const isFullyBooked = (lotteryData.ticketsBooked || 0) >= lotteryData.ticketCapacity;
+            const isFullyBooked = lotteryData.ticketCapacity > 0 && 
+                                (lotteryData.ticketsBooked || 0) >= lotteryData.ticketCapacity;
+            
             if (isFullyBooked && lotteryData.status === 'active') {
               setShowDrawNotification(true);
             } else {
@@ -75,7 +79,15 @@ export default function LotteryDetailPage() {
             
             // Check if lottery status changed to 'drawing'
             if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
+              // Auto-show the draw popup when lottery status changes to drawing
               setShowDrawPopup(true);
+              setIsDrawPopupDismissed(false);
+              
+              // If there's an auto-close timer active, clear it
+              if (drawPopupTimerRef.current) {
+                clearTimeout(drawPopupTimerRef.current);
+                drawPopupTimerRef.current = null;
+              }
             }
             
             // Update previous status ref
@@ -151,8 +163,13 @@ export default function LotteryDetailPage() {
       isMounted = false;
       unsubscribeLottery();
       unsubscribeDraw();
+      
+      // Clear any pending timers
+      if (drawPopupTimerRef.current) {
+        clearTimeout(drawPopupTimerRef.current);
+      }
     };
-  }, [lotteryId, user, lottery]); // Fixed dependency array by adding lottery
+  }, [lotteryId, user, lottery]); 
   
   // Function to check if lottery is in drawing or completed state
   const isDrawingOrCompleted = () => {
@@ -168,29 +185,6 @@ export default function LotteryDetailPage() {
     const drawTime = new Date(lottery.drawTime).getTime();
     
     return now > drawTime;
-  };
-  
-  // Function to start the draw (for agents)
-  const startDraw = async () => {
-    if (!lottery || !isAgent) return;
-    
-    try {
-      // Create a new draw sequence
-      const drawId = await firebaseService.createDrawSequence(lotteryId);
-      console.log('Created new draw sequence:', drawId);
-      
-      // Add first shuffle step
-      await firebaseService.addDrawStep(drawId, {
-        action: 'shuffle',
-        duration: 3
-      });
-      
-      // Show draw popup
-      setShowDrawPopup(true);
-    } catch (err) {
-      console.error('Error starting draw:', err);
-      setError('Failed to start the draw. Please try again.');
-    }
   };
   
   if (loading) {
@@ -409,17 +403,6 @@ export default function LotteryDetailPage() {
               </p>
             </div>
           </div>
-          
-          {isAgent && (
-            <div className="mt-3 pt-3 border-t border-prize-gold/20">
-              <button
-                onClick={startDraw}
-                className="w-full px-4 py-2 bg-prize-gold text-neutral-dark rounded-lg font-bold hover:bg-prize-gold/90 transition-colors"
-              >
-                Start Draw Now
-              </button>
-            </div>
-          )}
         </div>
       )}
       
@@ -491,14 +474,17 @@ export default function LotteryDetailPage() {
         )}
       </div>
       
-      {/* Draw Popup Modal */}
-      {showDrawPopup && drawSequence && (
+      {/* Draw Popup Modal - Enhanced version */}
+      {(showDrawPopup || (lottery?.status === 'drawing' && !isDrawPopupDismissed)) && drawSequence && (
         <div className="fixed inset-0 bg-neutral-dark/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
             <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
               <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
               <button 
-                onClick={() => setShowDrawPopup(false)}
+                onClick={() => {
+                  setShowDrawPopup(false);
+                  setIsDrawPopupDismissed(true);
+                }}
                 className="text-neutral-light/70 hover:text-white"
                 aria-label="Close"
               >
@@ -510,11 +496,24 @@ export default function LotteryDetailPage() {
               <DrawMachine 
                 lotteryId={lotteryId} 
                 drawId={drawSequence.id} 
-                isAgent={isAgent} 
                 isPopup={true}
                 onDrawComplete={() => {
-                  // Optionally close the popup after a delay when draw completes
-                  setTimeout(() => setShowDrawPopup(false), 5000);
+                  // For multi-prize draws, we need a longer delay
+                  const prizeCount = lottery.prizes?.length || 1;
+                  const baseDelay = 5000; // 5 seconds base
+                  const additionalDelayPerPrize = 3000; // 3 seconds per prize
+                  const totalDelay = baseDelay + (prizeCount * additionalDelayPerPrize);
+                  
+                  // Set a timer to close the popup after delay
+                  if (drawPopupTimerRef.current) {
+                    clearTimeout(drawPopupTimerRef.current);
+                  }
+                  
+                  drawPopupTimerRef.current = setTimeout(() => {
+                    setShowDrawPopup(false);
+                    setIsDrawPopupDismissed(true);
+                    drawPopupTimerRef.current = null;
+                  }, totalDelay);
                 }}
               />
             </div>
