@@ -152,7 +152,7 @@ export default function LotteryDetailPage() {
       unsubscribeLottery();
       unsubscribeDraw();
     };
-  }, [lotteryId, user]); // Added user as dependency
+  }, [lotteryId, user, lottery]); // Fixed dependency array by adding lottery
   
   // Function to check if lottery is in drawing or completed state
   const isDrawingOrCompleted = () => {
@@ -511,6 +511,11 @@ export default function LotteryDetailPage() {
                 lotteryId={lotteryId} 
                 drawId={drawSequence.id} 
                 isAgent={isAgent} 
+                isPopup={true}
+                onDrawComplete={() => {
+                  // Optionally close the popup after a delay when draw completes
+                  setTimeout(() => setShowDrawPopup(false), 5000);
+                }}
               />
             </div>
           </div>
