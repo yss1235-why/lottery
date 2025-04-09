@@ -1,12 +1,16 @@
-// File path: src/hooks/usePerformance.ts
 "use client";
 
+// File path: src/hooks/usePerformance.ts
 import { useState, useEffect } from 'react';
 
+// Define types for device performance
+export type DeviceTier = 'low' | 'medium' | 'high';
+export type ConnectionType = 'unknown' | '4g' | '3g' | '2g' | 'slow-2g';
+
 export function usePerformance() {
-  const [deviceTier, setDeviceTier] = useState<'low' | 'medium' | 'high'>('medium');
+  const [deviceTier, setDeviceTier] = useState<DeviceTier>('medium');
   const [isReducedMotion, setIsReducedMotion] = useState(false);
-  const [connectionType, setConnectionType] = useState<string>('unknown');
+  const [connectionType, setConnectionType] = useState<ConnectionType>('unknown');
   
   useEffect(() => {
     // Detect device performance tier
@@ -32,9 +36,9 @@ export function usePerformance() {
     // Run benchmark to confirm device tier
     const runBenchmark = () => {
       const startTime = performance.now();
-      let result = 0;
+      // Computation intensive operation
       for (let i = 0; i < 1000000; i++) {
-        result += Math.sqrt(i);
+        Math.sqrt(i);
       }
       const endTime = performance.now();
       const duration = endTime - startTime;
@@ -51,9 +55,9 @@ export function usePerformance() {
     
     // Detect connection type
     const detectConnection = () => {
-      const connection = (navigator as any).connection;
-      if (connection) {
-        return connection.effectiveType || 'unknown';
+      const connection = (navigator as { connection?: { effectiveType?: string } }).connection;
+      if (connection && connection.effectiveType) {
+        return connection.effectiveType as ConnectionType;
       }
       return 'unknown';
     };
@@ -85,7 +89,7 @@ export function usePerformance() {
     };
     
     // Listen for connection changes
-    const connectionApi = (navigator as any).connection;
+    const connectionApi = (navigator as { connection?: EventTarget }).connection;
     const handleConnectionChange = () => {
       setConnectionType(detectConnection());
     };
