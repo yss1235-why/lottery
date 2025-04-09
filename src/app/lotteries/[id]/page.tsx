@@ -29,7 +29,8 @@ export default function LotteryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
-  const [isAgent, setIsAgent] = useState(false);
+  // Remove the unused isAgent state variable or use it somewhere in the component
+  // const [isAgent, setIsAgent] = useState(false);
   const [showDrawNotification, setShowDrawNotification] = useState(false);
   const [showDrawPopup, setShowDrawPopup] = useState(false);
   const [isDrawPopupDismissed, setIsDrawPopupDismissed] = useState(false);
@@ -58,7 +59,7 @@ export default function LotteryDetailPage() {
         }
         
         // Set up real-time subscription to lottery data
-        unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
+        unsubscribeLottery = firebaseService.subscribeLottery(lotteryId, async (lotteryData) => {
           if (!isMounted) return;
           
           if (lotteryData) {
@@ -100,10 +101,7 @@ export default function LotteryDetailPage() {
                 if (agentInfo && isMounted) {
                   setHostName(agentInfo.name || 'Unknown Host');
                   
-                  // Check if current user is the agent
-                  if (user && agentInfo.uid === user.uid) {
-                    setIsAgent(true);
-                  }
+                  // Removed the isAgent check that wasn't used
                 }
               } catch (agentError) {
                 console.error('Error fetching agent information:', agentError);
@@ -509,17 +507,4 @@ export default function LotteryDetailPage() {
                     clearTimeout(drawPopupTimerRef.current);
                   }
                   
-                  drawPopupTimerRef.current = setTimeout(() => {
-                    setShowDrawPopup(false);
-                    setIsDrawPopupDismissed(true);
-                    drawPopupTimerRef.current = null;
-                  }, totalDelay);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                  drawPopupTimerRef.c
