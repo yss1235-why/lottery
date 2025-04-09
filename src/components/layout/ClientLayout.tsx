@@ -9,6 +9,7 @@ import Navigation from '@/components/layout/Navigation';
 import ContactFab from '@/components/layout/ContactFab';
 import ThemeSwitcher from '@/components/ui/ThemeSwitcher';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import NotificationSystem from '@/components/ui/NotificationSystem';
 
 export default function ClientLayout({ 
   children 
@@ -36,6 +37,7 @@ export default function ClientLayout({
             <Navigation />
             <ContactFab />
             <ThemeSwitcher />
+            <NotificationSystem />
           </main>
         </AuthGuard>
       </ThemeProvider>
