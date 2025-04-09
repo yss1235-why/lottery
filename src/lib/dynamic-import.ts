@@ -25,8 +25,8 @@ export function dynamicImport<T>(
  * This helps improve perceived performance for critical components
  * @param importFunc Import function for the component
  */
-export function preloadComponent(
-  importFunc: () => Promise<{ default: ComponentType<any> }>
+export function preloadComponent<T>(
+  importFunc: () => Promise<{ default: ComponentType<T> }>
 ): void {
   importFunc();
 }
