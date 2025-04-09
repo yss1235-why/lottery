@@ -29,8 +29,6 @@ export default function LotteryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
-  // Remove the unused isAgent state variable or use it somewhere in the component
-  // const [isAgent, setIsAgent] = useState(false);
   const [showDrawNotification, setShowDrawNotification] = useState(false);
   const [showDrawPopup, setShowDrawPopup] = useState(false);
   const [isDrawPopupDismissed, setIsDrawPopupDismissed] = useState(false);
@@ -41,8 +39,8 @@ export default function LotteryDetailPage() {
   
   useEffect(() => {
     let isMounted = true;
-    let unsubscribeLottery: () => void = () => {};
-    let unsubscribeDraw: () => void = () => {};
+    let unsubscribeLottery = () => {};
+    let unsubscribeDraw = () => {};
 
     const loadData = async () => {
       try {
@@ -59,7 +57,7 @@ export default function LotteryDetailPage() {
         }
         
         // Set up real-time subscription to lottery data
-        unsubscribeLottery = firebaseService.subscribeLottery(lotteryId, async (lotteryData) => {
+        unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
           if (!isMounted) return;
           
           if (lotteryData) {
@@ -100,8 +98,6 @@ export default function LotteryDetailPage() {
                 const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
                 if (agentInfo && isMounted) {
                   setHostName(agentInfo.name || 'Unknown Host');
-                  
-                  // Removed the isAgent check that wasn't used
                 }
               } catch (agentError) {
                 console.error('Error fetching agent information:', agentError);
@@ -143,7 +139,7 @@ export default function LotteryDetailPage() {
       }
     };
     
-    const loadDrawSequence = (sequenceId: string) => {
+    const loadDrawSequence = (sequenceId) => {
       unsubscribeDraw();
       unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
         if (isMounted && drawData) {
@@ -167,7 +163,7 @@ export default function LotteryDetailPage() {
         clearTimeout(drawPopupTimerRef.current);
       }
     };
-  }, [lotteryId, user, lottery]); 
+  }, [lotteryId, user, lottery]);
   
   // Function to check if lottery is in drawing or completed state
   const isDrawingOrCompleted = () => {
@@ -507,4 +503,17 @@ export default function LotteryDetailPage() {
                     clearTimeout(drawPopupTimerRef.current);
                   }
                   
-                  drawPopupTimerRef.c
+                  drawPopupTimerRef.current = setTimeout(() => {
+                    setShowDrawPopup(false);
+                    setIsDrawPopupDismissed(true);
+                    drawPopupTimerRef.current = null;
+                  }, totalDelay);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
