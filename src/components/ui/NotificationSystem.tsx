@@ -62,7 +62,7 @@ export const NotificationSystem = () => {
           const notification: Notification = {
             id: notificationId,
             type: 'winner',
-            message: `${winner.playerName} has just won ${winner.prize?.name || "a prize"}!`,
+            message: `${winner.name} has just won ${winner.prize?.name || "a prize"}!`,
             link: `/winners`,
             timestamp: Date.now()
           };
