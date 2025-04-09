@@ -1,21 +1,22 @@
 // File path: src/lib/dynamic-import.ts
 import dynamic from 'next/dynamic';
-import { ComponentType } from 'react';
+import { ComponentType, ReactNode } from 'react';
+import type { DynamicOptions, LoaderComponent } from 'next/dynamic';
 
 /**
  * Dynamically import a component with loading fallback
  * @param importFunc Import function for the component
- * @param LoadingComponent Optional loading component
- * @param options Additional options
+ * @param LoadingComponent Optional loading component to show while the dynamic component is loading
+ * @param options Additional options for dynamic loading
  * @returns Dynamically loaded component
  */
 export function dynamicImport<T>(
   importFunc: () => Promise<{ default: ComponentType<T> }>,
-  LoadingComponent?: ComponentType,
+  LoadingComponent?: ComponentType<{}>,
   options?: { ssr?: boolean }
 ): ComponentType<T> {
   return dynamic(importFunc, {
-    loading: LoadingComponent,
+    loading: LoadingComponent ? () => LoadingComponent({}) : undefined,
     ssr: options?.ssr ?? true
   });
 }
