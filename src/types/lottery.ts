@@ -28,7 +28,20 @@ export interface Lottery {
     gameId?: string;
     serverId?: string;
   };
+  // New property for winners array
+  winners?: Array<{
+    id?: string;
+    number?: number;
+    playerName: string;
+    gameId?: string;
+    serverId?: string;
+    phoneNumber?: string;
+    prizeIndex?: number;
+    prizeName?: string;
+    prizeValue?: string | number;
+  }>;
   drawId?: string;
+  gameDetails?: string;
   
   // Legacy properties for compatibility with existing components
   theme?: {
