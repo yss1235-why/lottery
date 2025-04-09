@@ -1,6 +1,7 @@
-// File: next.config.js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { Configuration as WebpackConfiguration } from 'webpack';
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   reactStrictMode: true,
   images: {
     domains: [
@@ -16,8 +17,8 @@ const nextConfig = {
   },
   // Enable shallow routing for better direct link handling
   trailingSlash: false,
-  // Adjust dynamic imports for better code splitting
-  webpack: (config) => {
+  // Properly typed webpack configuration
+  webpack: (config: WebpackConfiguration) => {
     return config;
   },
   // Add custom headers to improve caching and loading
@@ -53,4 +54,4 @@ const nextConfig = {
   }
 };
 
-module.exports = nextConfig;
+export default nextConfig;
