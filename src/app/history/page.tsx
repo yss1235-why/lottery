@@ -3,7 +3,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
 import { analyticsService } from '@/services/analytics-service';
@@ -11,7 +10,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import HistoryHeader from '@/components/history/HistoryHeader';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { MdCardGiftcard, MdCheck, MdPerson } from 'react-icons/md';
+import { MdCheck, MdPerson } from 'react-icons/md';
 
 export default function HistoryPage() {
   const [completedLotteries, setCompletedLotteries] = useState<Lottery[]>([]);
