@@ -53,6 +53,17 @@ export function usePerformance() {
       }
     };
     
+    // Helper to determine the lower tier
+    const getLowerTier = (tier1: DeviceTier, tier2: DeviceTier): DeviceTier => {
+      const tierValues: Record<DeviceTier, number> = {
+        'low': 0,
+        'medium': 1,
+        'high': 2
+      };
+      
+      return tierValues[tier1] <= tierValues[tier2] ? tier1 : tier2;
+    };
+    
     // Detect connection type
     const detectConnection = (): ConnectionType => {
       const connection = (navigator as { connection?: { effectiveType?: string } }).connection;
@@ -65,18 +76,11 @@ export function usePerformance() {
     // Initial detection
     const initialTier = detectPerformance();
     
-    // Only run the benchmark if we have time
+    // Only run the benchmark if we have time (not on low-end devices)
     if (initialTier !== 'low') {
       const benchmarkTier = runBenchmark();
-      
-      // Determine the final tier (take the lower tier for performance safety)
-      let finalTier: DeviceTier = 'high';
-      if (initialTier === 'low' || benchmarkTier === 'low') {
-        finalTier = 'low';
-      } else if (initialTier === 'medium' || benchmarkTier === 'medium') {
-        finalTier = 'medium';
-      }
-      
+      // Use the lower of the two tiers for better performance
+      const finalTier = getLowerTier(initialTier, benchmarkTier);
       setDeviceTier(finalTier);
     } else {
       setDeviceTier(initialTier);
