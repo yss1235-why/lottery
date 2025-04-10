@@ -9,6 +9,7 @@ import { Lottery } from '@/types/lottery';
 import { DrawWinner } from '@/types/draw-sequence';
 import { MdEmojiEvents, MdLocalPlay } from 'react-icons/md';
 import { firebaseService } from '@/services/firebase-service';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Notification {
   id: string;
@@ -23,10 +24,26 @@ interface Notification {
 export const NotificationSystem = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [visibleNotification, setVisibleNotification] = useState<Notification | null>(null);
+  const { user } = useAuth();
+
+  // Debug logging - remove after troubleshooting
+  useEffect(() => {
+    console.log('NotificationSystem mounted, auth status:', !!user);
+  }, [user]);
 
   // Listen for lottery draw events from Firebase
   useEffect(() => {
+    // Only set up subscriptions if user is authenticated
+    if (!user) {
+      console.log('NotificationSystem: Not setting up subscriptions - user not authenticated');
+      return;
+    }
+
+    console.log('Setting up notification subscriptions');
+    
     const unsubscribeLotteries = firebaseService.subscribeToDrawingLotteries((lotteries) => {
+      console.log('Drawing lotteries subscription triggered:', lotteries.length);
+      
       lotteries.forEach(lottery => {
         // Create a notification for each lottery that's in drawing state
         const notificationId = `draw-${lottery.id}`;
@@ -42,6 +59,7 @@ export const NotificationSystem = () => {
             lottery
           };
           
+          console.log('Creating new draw notification:', notification);
           setNotifications(prev => [...prev, notification]);
         }
       });
@@ -49,6 +67,8 @@ export const NotificationSystem = () => {
     
     // Listen for winner announcements
     const unsubscribeWinners = firebaseService.subscribeToRecentWinners(5, (winners) => {
+      console.log('Recent winners subscription triggered:', winners.length);
+      
       // Check for recent winners (within the last 5 minutes)
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
       
@@ -67,26 +87,31 @@ export const NotificationSystem = () => {
             timestamp: Date.now()
           };
           
+          console.log('Creating new winner notification:', notification);
           setNotifications(prev => [...prev, notification]);
         }
       });
     });
     
     return () => {
+      console.log('Cleaning up notification subscriptions');
       unsubscribeLotteries();
       unsubscribeWinners();
     };
-  }, [notifications]);
+  }, [user, notifications]);
 
   // Display notifications one by one
   useEffect(() => {
     if (notifications.length > 0 && !visibleNotification) {
+      console.log('Processing notifications queue:', notifications.length);
+      
       // Find the oldest notification we haven't shown
       const newNotification = [...notifications].sort((a, b) => a.timestamp - b.timestamp)[0];
       setVisibleNotification(newNotification);
       
       // Remove this notification after 6 seconds
       const timer = setTimeout(() => {
+        console.log('Removing notification:', newNotification.id);
         setVisibleNotification(null);
         setNotifications(prev => prev.filter(n => n.id !== newNotification.id));
       }, 6000);
