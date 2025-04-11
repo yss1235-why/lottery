@@ -925,33 +925,59 @@ export const firebaseService = {
   },
 
   /**
-   * Gets the latest draw sequence for a lottery
+   * Gets the latest draw sequence for a lottery without requiring Firebase indexing
    * @param lotteryId The ID of the lottery
    * @returns Promise with the draw sequence or null if not found
    */
   async getLatestDrawSequenceForLottery(lotteryId: string): Promise<DrawSequence | null> {
     try {
-      const drawsRef = ref(database, 'drawSequences');
-      const lotteryDrawsQuery = query(
-        drawsRef, 
-        orderByChild('lotteryId'), 
-        equalTo(lotteryId),
-        limitToLast(1)
-      );
+      // First check if the lottery has a drawId reference (more efficient approach)
+      const lotteryRef = ref(database, `lotteries/${lotteryId}`);
+      const lotterySnapshot = await get(lotteryRef);
       
-      const snapshot = await get(lotteryDrawsQuery);
+      if (lotterySnapshot.exists()) {
+        const lottery = lotterySnapshot.val();
+        
+        // If lottery has a drawId, use that directly (no index needed)
+        if (lottery.drawId) {
+          const drawRef = ref(database, `drawSequences/${lottery.drawId}`);
+          const drawSnapshot = await get(drawRef);
+          
+          if (drawSnapshot.exists()) {
+            return {
+              id: drawSnapshot.key as string,
+              ...drawSnapshot.val()
+            };
+          }
+        }
+      }
+      
+      // Fallback: Get all draw sequences and filter locally in JavaScript
+      // This avoids using orderByChild which requires an index
+      const drawsRef = ref(database, 'drawSequences');
+      const snapshot = await get(drawsRef);
       
       if (snapshot.exists()) {
-        let drawSequence: DrawSequence | null = null;
+        const sequences: DrawSequence[] = [];
         
         snapshot.forEach((childSnapshot) => {
-          drawSequence = {
-            id: childSnapshot.key as string,
-            ...childSnapshot.val()
-          };
+          const sequence = childSnapshot.val();
+          if (sequence.lotteryId === lotteryId) {
+            sequences.push({
+              id: childSnapshot.key as string,
+              ...sequence
+            });
+          }
         });
         
-        return drawSequence;
+        if (sequences.length > 0) {
+          // Sort by updatedAt or createdAt to find the latest
+          return sequences.sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+            const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+            return dateB - dateA; // Sort in descending order (latest first)
+          })[0];
+        }
       }
       
       return null;
