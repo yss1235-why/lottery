@@ -16,6 +16,8 @@ export interface DrawStep {
 export interface DrawWinner {
   ticketNumber: number;
   playerName: string;
+  ticketId?: string;  // Added for ticket ID reveal functionality
+  id?: string;        // Added as alternate ticket ID source
   prize: {
     id: string;
     name: string;
