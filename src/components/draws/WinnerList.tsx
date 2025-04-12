@@ -174,7 +174,9 @@ export default function WinnerList({ drawId, lotteryId }: WinnerListProps) {
                         {winner.prize.name}
                       </div>
                       <div className="text-prize-gold font-dm-mono">
-                        {formatCurrency(winner.prize.value)}
+                        {typeof winner.prize.value === 'number' 
+                          ? formatCurrency(winner.prize.value)
+                          : winner.prize.value}
                       </div>
                     </div>
                   </div>
