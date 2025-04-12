@@ -19,8 +19,22 @@ export interface DrawWinner {
   prize: {
     id: string;
     name: string;
-    value: number;
+    value: number | string;
     image?: string;
+  };
+}
+
+/**
+ * Character data for character reveal animation
+ */
+export interface Character {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  type?: string;
+  attributes?: {
+    [key: string]: string | number | boolean;
   };
 }
 
@@ -34,6 +48,7 @@ export interface DrawSequence {
   status: 'pending' | 'in-progress' | 'completed';
   steps: DrawStep[];
   winners: DrawWinner[];
+  characters?: Character[];
   createdAt: string;
   updatedAt: string;
 }
@@ -42,10 +57,11 @@ export interface DrawSequence {
  * Draw machine animation state
  */
 export interface DrawMachineState {
-  status: 'idle' | 'shuffling' | 'selecting' | 'revealing' | 'celebrating' | 'complete';
+  status: 'idle' | 'shuffling' | 'selecting' | 'revealing' | 'celebrating' | 'character-reveal' | 'complete';
   currentStep: number;
   currentTicket?: number;
   currentPrize?: number;
+  currentCharacter?: number;
   speed: number;
 }
 
