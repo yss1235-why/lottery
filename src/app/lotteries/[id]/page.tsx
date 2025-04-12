@@ -31,7 +31,10 @@ export default function LotteryDetailPage() {
   const [showDrawNotification, setShowDrawNotification] = useState(false);
   const [showDrawPopup, setShowDrawPopup] = useState(false);
   
-  // Track lottery status changes
+  // Add state to track animation completion
+  const [animationComplete, setAnimationComplete] = useState(false);
+  
+  // Track lottery status changes for draw popup only
   const prevStatusRef = useRef<string | undefined>(lottery?.status);
   const drawPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -87,7 +90,7 @@ export default function LotteryDetailPage() {
               setShowDrawNotification(false);
             }
             
-            // Check if lottery status changed to 'drawing'
+            // Only check for 'drawing' status changes for the popup, not 'completed'
             if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
               // Auto-show the draw popup when lottery status changes to drawing
               setShowDrawPopup(true);
@@ -106,6 +109,11 @@ export default function LotteryDetailPage() {
             
             // Update previous status ref
             prevStatusRef.current = lotteryData.status;
+            
+            // Reset animation complete state when lottery status changes
+            if (lotteryData.status !== 'completed') {
+              setAnimationComplete(false);
+            }
             
             // Fetch agent/host information if agentId exists
             if (lotteryData.agentId) {
@@ -155,10 +163,10 @@ export default function LotteryDetailPage() {
     };
   }, [lotteryId, user, lottery]);
   
-  // Function to check if lottery is in drawing or completed state
-  const isDrawingOrCompleted = () => {
-    if (!lottery) return false;
-    return lottery.status === 'drawing' || lottery.status === 'completed';
+  // Handler for animation completion
+  const handleDrawComplete = () => {
+    console.log('Draw animation completed, updating UI');
+    setAnimationComplete(true);
   };
   
   // Function to check if lottery draw time has passed (for display purposes only)
@@ -193,6 +201,9 @@ export default function LotteryDetailPage() {
   
   // Format date for display
   const drawDateFormatted = formatDate(lottery.drawTime);
+  
+  // Determine if we should show the draw results based on status AND animation completion
+  const showDrawResults = lottery.status === 'completed' && animationComplete;
   
   return (
     <div className="lottery-detail pb-20">
@@ -390,59 +401,59 @@ export default function LotteryDetailPage() {
         </div>
       )}
       
-      {/* Main content area - Show either tickets or completed info */}
+      {/* Main content area - Show draw animation or results based on status AND animation completion */}
       <div className="mt-6">
-        {isDrawingOrCompleted() ? (
+        {lottery.status === 'drawing' || (lottery.status === 'completed' && !animationComplete) ? (
+          <div className="mx-4">
+            <DrawMachine 
+              lotteryId={lotteryId} 
+              drawId={lottery.drawId}
+              onDrawComplete={handleDrawComplete}
+            />
+          </div>
+        ) : showDrawResults ? (
           <div className="mx-4">
             <h2 className="text-xl font-bold mb-4">Lottery Results</h2>
-            {lottery.status === 'completed' ? (
-              <div className="bg-neutral-dark rounded-lg p-4">
-                <div className="text-center py-4">
-                  <div className="w-16 h-16 bg-prize-gold/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <MdLocalPlay className="text-prize-gold" size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">Draw Completed</h3>
-                  <p className="text-neutral-light/70 mb-4">
-                    This lottery draw has been completed.
-                  </p>
-                  
-                  {lottery.winners && lottery.winners.length > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      <h4 className="font-bold text-lg">Winners</h4>
-                      {lottery.winners.map((winner, index) => (
-                        <div 
-                          key={index}
-                          className="bg-neutral-dark/50 p-3 rounded-lg flex items-center"
-                        >
-                          <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-bold">{winner.playerName}</div>
-                            <div className="text-sm text-neutral-light/70">
-                              Ticket #{winner.number}
-                            </div>
-                          </div>
-                          <div className="text-prize-gold">
-                            {winner.prizeName}
+            <div className="bg-neutral-dark rounded-lg p-4">
+              <div className="text-center py-4">
+                <div className="w-16 h-16 bg-prize-gold/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <MdLocalPlay className="text-prize-gold" size={32} />
+                </div>
+                <h3 className="text-xl font-bold mb-2">Draw Completed</h3>
+                <p className="text-neutral-light/70 mb-4">
+                  This lottery draw has been completed.
+                </p>
+                
+                {lottery.winners && lottery.winners.length > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="font-bold text-lg">Winners</h4>
+                    {lottery.winners.map((winner, index) => (
+                      <div 
+                        key={index}
+                        className="bg-neutral-dark/50 p-3 rounded-lg flex items-center"
+                      >
+                        <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-bold">{winner.playerName}</div>
+                          <div className="text-sm text-neutral-light/70">
+                            Ticket #{winner.number}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-neutral-light/70">
-                      No winner information available.
-                    </div>
-                  )}
-                </div>
+                        <div className="text-prize-gold">
+                          {winner.prizeName}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-neutral-light/70">
+                    No winner information available.
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="bg-neutral-dark rounded-lg p-4">
-                <p className="text-center text-neutral-light/70 mb-4">
-                  The draw for this lottery is currently in progress. Results will be available soon.
-                </p>
-              </div>
-            )}
+            </div>
           </div>
         ) : (
           <div>
@@ -458,7 +469,7 @@ export default function LotteryDetailPage() {
         )}
       </div>
       
-      {/* Draw Popup Modal - Always visible when lottery status is drawing */}
+      {/* Draw Popup Modal - Only for 'drawing' status */}
       {showDrawPopup && lottery?.status === 'drawing' && (
         <div className="fixed inset-0 backdrop-blur-md bg-neutral-dark/80 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10">
@@ -481,10 +492,7 @@ export default function LotteryDetailPage() {
                 lotteryId={lotteryId} 
                 drawId={lottery.drawId} 
                 isPopup={true}
-                onDrawComplete={() => {
-                  // Draw is complete but we'll keep the popup open
-                  // until user navigates away
-                }}
+                onDrawComplete={handleDrawComplete}
               />
             </div>
           </div>
