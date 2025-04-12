@@ -21,7 +21,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import DrawPreparationAnimation from '@/components/draws/DrawPreparationAnimation';
 import { formatCurrency } from '@/lib/formatters';
-import { MdLocalPlay, MdTimer } from 'react-icons/md';
+import { MdTimer } from 'react-icons/md';
 
 interface DrawMachineProps {
   lotteryId: string;
