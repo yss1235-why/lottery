@@ -6,7 +6,6 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
-import { DrawSequence } from '@/types/draw-sequence';
 import { useAuth } from '@/contexts/AuthContext';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import ProgressBar from '@/components/ui/ProgressBar';
@@ -26,7 +25,6 @@ export default function LotteryDetailPage() {
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
   
   const [lottery, setLottery] = useState<Lottery | null>(null);
-  const [drawSequence, setDrawSequence] = useState<DrawSequence | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
@@ -54,7 +52,6 @@ export default function LotteryDetailPage() {
   useEffect(() => {
     let isMounted = true;
     let unsubscribeLottery = () => {};
-    let unsubscribeDraw = () => {};
 
     const loadData = async () => {
       try {
@@ -124,21 +121,6 @@ export default function LotteryDetailPage() {
                 }
               }
             }
-            
-            // If lottery has a drawId, load the draw sequence
-            if (lotteryData.drawId) {
-              loadDrawSequence(lotteryData.drawId);
-            } else {
-              // Try to get the latest draw sequence for this lottery
-              try {
-                const latestDraw = await firebaseService.getLatestDrawSequenceForLottery(lotteryId);
-                if (latestDraw && isMounted) {
-                  loadDrawSequence(latestDraw.id);
-                }
-              } catch (err) {
-                console.error('Error fetching latest draw:', err);
-              }
-            }
           } else {
             setError('Lottery not found or has been removed.');
           }
@@ -156,16 +138,6 @@ export default function LotteryDetailPage() {
         }
       }
     };
-    
-    // Add the type annotation for sequenceId
-    const loadDrawSequence = (sequenceId: string): void => {
-      unsubscribeDraw();
-      unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
-        if (isMounted && drawData) {
-          setDrawSequence(drawData);
-        }
-      });
-    };
 
     // Only load data if user is authenticated
     if (user) {
@@ -175,7 +147,6 @@ export default function LotteryDetailPage() {
     return () => {
       isMounted = false;
       unsubscribeLottery();
-      unsubscribeDraw();
       
       // Clear any pending timers
       if (drawPopupTimerRef.current) {
