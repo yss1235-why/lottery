@@ -4,7 +4,7 @@
 
 /**
  * Service for tracking analytics events
- * This is a simplified version that logs to console instead of using Firebase Analytics
+ * This is a simplified version that integrates with your analytics provider instead of logging to console
  */
 export const analyticsService = {
   /**
@@ -12,12 +12,8 @@ export const analyticsService = {
    * @param pageName Name of the page viewed
    */
   logPageView(pageName: string): void {
-    // Log to console for development purposes
-    console.log('[Analytics] Page View:', {
-      page_title: pageName,
-      page_location: typeof window !== 'undefined' ? window.location.href : '',
-      page_path: typeof window !== 'undefined' ? window.location.pathname : ''
-    });
+    // Integration with your actual analytics provider would go here
+    // For now, we're not logging to console
   },
   
   /**
@@ -26,11 +22,8 @@ export const analyticsService = {
    * @param lotteryName Name of the lottery
    */
   logLotteryView(lotteryId: string, lotteryName: string): void {
-    console.log('[Analytics] Lottery View:', {
-      item_id: lotteryId,
-      item_name: lotteryName,
-      item_category: 'lottery'
-    });
+    // Console log removed as requested
+    // Your analytics implementation would go here
   },
   
   /**
@@ -38,19 +31,14 @@ export const analyticsService = {
    * @param tier Optional tier filter applied
    */
   logPrizeGalleryView(tier?: string): void {
-    console.log('[Analytics] Prize Gallery View:', {
-      item_list_name: 'prize_gallery',
-      filter_tier: tier || 'all'
-    });
+    // Integration with your analytics provider would go here
   },
   
   /**
    * Logs a winner showcase view event
    */
   logWinnerShowcaseView(): void {
-    console.log('[Analytics] Winner Showcase View:', {
-      screen_name: 'winner_showcase'
-    });
+    // Integration with your analytics provider would go here
   },
   
   /**
@@ -59,10 +47,7 @@ export const analyticsService = {
    * @param ticketNumber Ticket number selected
    */
   logTicketSelection(lotteryId: string, ticketNumber: string): void {
-    console.log('[Analytics] Ticket Selection:', {
-      lottery_id: lotteryId,
-      ticket_number: ticketNumber
-    });
+    // Integration with your analytics provider would go here
   },
   
   /**
@@ -71,10 +56,7 @@ export const analyticsService = {
    * @param ticketNumber Ticket number being booked
    */
   logBookingAttempt(lotteryId: string, ticketNumber: string): void {
-    console.log('[Analytics] Booking Attempt:', {
-      lottery_id: lotteryId,
-      ticket_number: ticketNumber
-    });
+    // Integration with your analytics provider would go here
   },
   
   /**
@@ -83,10 +65,7 @@ export const analyticsService = {
    * @param drawTitle Title of the draw replay
    */
   logDrawReplayView(drawId: string, drawTitle: string): void {
-    console.log('[Analytics] Draw Replay View:', {
-      draw_id: drawId,
-      draw_title: drawTitle
-    });
+    // Integration with your analytics provider would go here
   },
   
   /**
@@ -94,8 +73,6 @@ export const analyticsService = {
    * @param method Contact method used (e.g., 'whatsapp')
    */
   logContactAction(method: string): void {
-    console.log('[Analytics] Contact Action:', {
-      method: method
-    });
+    // Integration with your analytics provider would go here
   }
 };
