@@ -59,12 +59,13 @@ export default function DrawMachine({
   const [machineState, setMachineState] = useState({
     status: IDLE_STATUS,
     currentStep: -1,
-    speed: 1 // Default speed set to 1x
+    speed: 1
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
+  const [showWinners, setShowWinners] = useState(false);
   
   // Ticket ID reveal states
   const [winnerTickets, setWinnerTickets] = useState<string[]>([]);
@@ -80,6 +81,8 @@ export default function DrawMachine({
 
   // Generate a scrambled version of a ticket ID
   const scrambleTicketId = useCallback((ticketId: string): TicketChar[] => {
+    console.log("Scrambling ticket ID:", ticketId);
+    
     // Convert ticket ID to array of characters
     const chars = ticketId.split('');
     
@@ -148,6 +151,8 @@ export default function DrawMachine({
       clearTimeout(ticketRevealTimerRef.current);
     }
     
+    console.log("Processing ticket reveal, phase:", revealPhase);
+    
     // Handle different phases of the reveal
     if (revealPhase === 'scramble') {
       // Reveal all scrambled characters first
@@ -199,7 +204,9 @@ export default function DrawMachine({
             processTicketReveal();
           }, 1000);
         } else {
-          // All tickets revealed
+          // All tickets revealed - show winners
+          console.log("All tickets revealed, showing winners");
+          setShowWinners(true);
           setMachineState(prev => ({
             ...prev,
             status: COMPLETE_STATUS
@@ -209,16 +216,37 @@ export default function DrawMachine({
           if (countdownTimerRef.current) {
             clearInterval(countdownTimerRef.current);
           }
+          
+          // Notify parent component if needed
+          if (onDrawComplete) {
+            onDrawComplete();
+          }
         }
       }, 5000);
     }
-  }, [currentTicketIndex, resetCountdown, revealPhase, scrambleTicketId, winnerTickets]);
+  }, [currentTicketIndex, resetCountdown, revealPhase, scrambleTicketId, winnerTickets, onDrawComplete]);
   
   // Start the ticket ID reveal process
   const startTicketReveal = useCallback(() => {
+    console.log("Starting ticket reveal animation");
+    
+    // Create sample tickets if none found (for testing)
+    if (winnerTickets.length === 0) {
+      console.log("No winner tickets found - using sample data");
+      
+      // Check if there are winners with ticketNumber but no ID
+      const sampleTickets = drawSequence?.winners?.map((winner, index) => 
+        `T${winner.ticketNumber.toString().padStart(5, '0')}`
+      ) || ['RRN328', 'ABC123'];
+      
+      setWinnerTickets(sampleTickets);
+      console.log("Created sample tickets:", sampleTickets);
+    }
+    
     // Reset state
     setCurrentTicketIndex(0);
     setRevealPhase('scramble');
+    setShowWinners(false);
     
     // Clear any existing timers
     if (ticketRevealTimerRef.current) {
@@ -234,23 +262,18 @@ export default function DrawMachine({
       status: TICKET_REVEAL_STATUS
     }));
     
-    // Initialize with first ticket ID if available
-    if (winnerTickets.length > 0) {
-      // Scramble the first ticket ID
-      setCurrentTicketChars(scrambleTicketId(winnerTickets[0]));
-      
-      // Start the reveal process
-      ticketRevealTimerRef.current = setTimeout(() => {
-        processTicketReveal();
-      }, 1000);
-    } else {
-      // No tickets to reveal, go back to complete state
-      setMachineState(prev => ({
-        ...prev,
-        status: COMPLETE_STATUS
-      }));
-    }
-  }, [processTicketReveal, scrambleTicketId, winnerTickets]);
+    // Use the first ticket, guarantee we have at least one
+    const ticketsToUse = winnerTickets.length > 0 ? winnerTickets : ['SAMPLE1'];
+    
+    // Scramble the first ticket ID
+    const scrambledChars = scrambleTicketId(ticketsToUse[0]);
+    setCurrentTicketChars(scrambledChars);
+    
+    // Start the reveal process
+    ticketRevealTimerRef.current = setTimeout(() => {
+      processTicketReveal();
+    }, 1000);
+  }, [processTicketReveal, scrambleTicketId, winnerTickets, drawSequence]);
   
   // Initialize and load data
   useEffect(() => {
@@ -264,7 +287,18 @@ export default function DrawMachine({
         // Subscribe to lottery data
         unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, (lotteryData) => {
           if (lotteryData) {
+            console.log("Lottery data updated, status:", lotteryData.status);
             setLottery(lotteryData);
+            
+            // Check for status changes (specifically to "completed")
+            if (lotteryData.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS) {
+              console.log("Lottery status is 'completed' - should start ticket reveal");
+              
+              // If lottery has a drawId and none was provided, use that one
+              if (lotteryData.drawId && !drawId) {
+                loadDrawSequence(lotteryData.drawId, true);
+              }
+            }
             
             // If lottery has a drawId and none was provided, use that one
             if (lotteryData.drawId && !drawId) {
@@ -301,33 +335,45 @@ export default function DrawMachine({
       }
     };
     
-    const loadDrawSequence = (sequenceId: string) => {
+    const loadDrawSequence = (sequenceId: string, startAnimation = false) => {
       unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
         if (drawData) {
+          console.log("Draw sequence updated:", drawData.id, "Status:", drawData.status);
           setDrawSequence(drawData);
           
           // Extract winner ticket IDs if available
           if (drawData.winners && drawData.winners.length > 0) {
-            const ticketIds = drawData.winners.map(winner => 
-              typeof winner.ticketId === 'string' ? winner.ticketId : 
-              winner.id || `T${winner.ticketNumber.toString().padStart(5, '0')}`
-            ).filter(id => id);
+            console.log("Winners found:", drawData.winners.length);
             
+            // Map through winners to extract ticket IDs
+            const ticketIds = drawData.winners.map(winner => {
+              // Log each winner's properties
+              console.log("Winner data:", {
+                ticketId: winner.ticketId,
+                id: winner.id,
+                ticketNumber: winner.ticketNumber
+              });
+              
+              // Try to get a ticket ID from multiple possible sources
+              const extractedId = typeof winner.ticketId === 'string' ? winner.ticketId : 
+                winner.id || `T${winner.ticketNumber.toString().padStart(5, '0')}`;
+              
+              console.log("Extracted ticket ID:", extractedId);
+              return extractedId;
+            }).filter(id => id);
+            
+            console.log("All extracted ticket IDs:", ticketIds);
             setWinnerTickets(ticketIds);
-          }
-          
-          // Update machine state based on draw status
-          if (drawData.status === 'pending') {
-            setMachineState(prevState => ({
-              ...prevState,
-              status: IDLE_STATUS
-            }));
-          } else if (drawData.status === 'completed') {
-            setMachineState(prevState => ({
-              ...prevState,
-              status: COMPLETE_STATUS,
-              currentStep: drawData.steps.length - 1
-            }));
+            
+            // Start animation immediately if requested and we're looking at a completed draw
+            if (startAnimation && drawData.status === 'completed') {
+              console.log("Auto-starting ticket reveal animation");
+              setTimeout(() => {
+                startTicketReveal();
+              }, 500);
+            }
+          } else {
+            console.log("No winners found in draw data");
           }
         }
       });
@@ -347,25 +393,17 @@ export default function DrawMachine({
         clearInterval(countdownTimerRef.current);
       }
     };
-  }, [lotteryId, drawId]);
+  }, [lotteryId, drawId, startTicketReveal, machineState.status]);
   
-  // Handle draw completion
+  // Separate effect to handle lottery status changes
   useEffect(() => {
-    if (machineState.status === COMPLETE_STATUS) {
-      // Ensure we notify the parent component when draw completes
-      if (onDrawComplete) {
-        onDrawComplete();
-      }
-      
-      // Start ticket ID reveal after the main animation completes
-      if (winnerTickets.length > 0 && currentTicketIndex < 0) {
-        // Add a small delay before starting ticket reveal
-        setTimeout(() => {
-          startTicketReveal();
-        }, 1500);
-      }
+    if (lottery?.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS) {
+      console.log("Lottery status is 'completed' - starting ticket reveal animation");
+      setTimeout(() => {
+        startTicketReveal();
+      }, 500);
     }
-  }, [machineState.status, onDrawComplete, winnerTickets, startTicketReveal, currentTicketIndex]);
+  }, [lottery?.status, machineState.status, startTicketReveal]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -515,7 +553,7 @@ export default function DrawMachine({
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets, onDrawComplete]);
+  }, [drawSequence, machineState, tickets]);
   
   // Loading and error states
   if (loading) {
@@ -634,6 +672,41 @@ export default function DrawMachine({
              `Ticket ${currentTicket} revealed! ${
                currentTicketIndex < winnerTickets.length - 1 ? 'Preparing next ticket...' : 'All tickets revealed!'
              }`}
+          </div>
+        </div>
+      );
+    }
+    
+    // If showing winners after animation completes
+    if (showWinners && lottery.status === 'completed') {
+      return (
+        <div className="winners-container bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden p-6"
+             style={{ height: isPopup ? '350px' : '400px' }}>
+          <h3 className="text-xl font-bold mb-4 text-center">Winners Announced</h3>
+          
+          <div className="winners-list space-y-4 overflow-auto max-h-[300px] pr-2">
+            {drawSequence?.winners?.map((winner, index) => (
+              <div 
+                key={index}
+                className="winner-card bg-neutral-dark rounded-lg p-4 flex items-start"
+              >
+                <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3 font-semibold">
+                  {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index+1}th`}
+                </div>
+                
+                <div className="flex-1">
+                  <div className="font-bold">{winner.playerName}</div>
+                  <div className="text-sm text-neutral-light/70">
+                    Ticket #{winner.ticketNumber}
+                  </div>
+                  <div className="mt-1 text-prize-gold font-bold">
+                    {typeof winner.prize.value === 'number' 
+                      ? formatCurrency(winner.prize.value)
+                      : winner.prize.value}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       );
