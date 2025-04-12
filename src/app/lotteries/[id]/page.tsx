@@ -4,6 +4,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { motion } from 'framer-motion';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,7 +37,6 @@ export default function LotteryDetailPage() {
   
   // Track lottery status changes for draw popup only
   const prevStatusRef = useRef<string | undefined>(lottery?.status);
-  const drawPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Add listener for navigation events to reset popup visibility
   useEffect(() => {
@@ -90,16 +90,10 @@ export default function LotteryDetailPage() {
               setShowDrawNotification(false);
             }
             
-            // Only check for 'drawing' status changes for the popup, not 'completed'
+            // Only check for 'drawing' status changes for the popup
             if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
               // Auto-show the draw popup when lottery status changes to drawing
               setShowDrawPopup(true);
-              
-              // If there's an auto-close timer active, clear it
-              if (drawPopupTimerRef.current) {
-                clearTimeout(drawPopupTimerRef.current);
-                drawPopupTimerRef.current = null;
-              }
             }
             
             // Always show the draw popup when lottery is in drawing state
@@ -155,11 +149,6 @@ export default function LotteryDetailPage() {
     return () => {
       isMounted = false;
       unsubscribeLottery();
-      
-      // Clear any pending timers
-      if (drawPopupTimerRef.current) {
-        clearTimeout(drawPopupTimerRef.current);
-      }
     };
   }, [lotteryId, user, lottery]);
   
@@ -167,6 +156,13 @@ export default function LotteryDetailPage() {
   const handleDrawComplete = () => {
     console.log('Draw animation completed, updating UI');
     setAnimationComplete(true);
+    
+    // Close the draw popup when animation completes
+    if (showDrawPopup) {
+      setTimeout(() => {
+        setShowDrawPopup(false);
+      }, 3000); // Close popup 3 seconds after animation completes
+    }
   };
   
   // Function to check if lottery draw time has passed (for display purposes only)
@@ -403,7 +399,7 @@ export default function LotteryDetailPage() {
       
       {/* Main content area - Show draw animation or results based on status AND animation completion */}
       <div className="mt-6">
-        {lottery.status === 'drawing' || (lottery.status === 'completed' && !animationComplete) ? (
+        {(lottery.status === 'drawing' || (lottery.status === 'completed' && !animationComplete)) && !showDrawPopup ? (
           <div className="mx-4">
             <DrawMachine 
               lotteryId={lotteryId} 
@@ -469,33 +465,55 @@ export default function LotteryDetailPage() {
         )}
       </div>
       
-      {/* Draw Popup Modal - Only for 'drawing' status */}
-      {showDrawPopup && lottery?.status === 'drawing' && (
+      {/* Single Draw Popup Modal - Only for 'drawing' status */}
+      {(showDrawPopup && lottery?.status === 'drawing') && (
         <div className="fixed inset-0 backdrop-blur-md bg-neutral-dark/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10">
+          <motion.div 
+            className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
             <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
-              <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
+              <div className="flex items-center">
+                <div className="bg-prize-gold/20 p-2 rounded-full mr-3">
+                  <MdLocalPlay size={24} className="text-prize-gold" />
+                </div>
+                <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
+              </div>
               <button 
-                onClick={() => {
-                  // Close the popup but navigate away to ensure it doesn't reopen
-                  router.push('/');
-                }}
-                className="text-neutral-light/70 hover:text-white"
-                aria-label="Close and go home"
+                onClick={() => setShowDrawPopup(false)}
+                className="text-neutral-light/70 hover:text-white transition-colors"
+                aria-label="Close draw popup"
               >
                 <MdClose size={24} />
               </button>
             </div>
             
             <div className="p-4">
+              {/* Status indicator ribbon */}
+              <div className="w-full bg-secondary/20 text-center py-2 mb-4 rounded">
+                <span className="font-medium text-secondary">
+                  <span className="inline-block h-2 w-2 rounded-full bg-secondary animate-pulse mr-2"></span>
+                  Live Draw in Progress
+                </span>
+              </div>
+
+              {/* Draw animation */}
               <DrawMachine 
                 lotteryId={lotteryId} 
                 drawId={lottery.drawId} 
                 isPopup={true}
                 onDrawComplete={handleDrawComplete}
               />
+              
+              {/* Additional information for users */}
+              <div className="mt-4 p-3 bg-neutral-dark/50 rounded-lg text-sm text-neutral-light/70 text-center">
+                Watch as the lottery system randomly selects winning tickets in real-time.
+                Once the draw is complete, winners will be announced.
+              </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>
