@@ -18,8 +18,8 @@ import { analyticsService } from '@/services/analytics-service';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, MdNotifications } from 'react-icons/md';
 
-// Define UI states as a type for better type checking
-type LotteryUIState = 'loading' | 'error' | 'ticket-selection' | 'draw-inline' | 'draw-popup' | 'results';
+// Define simplified UI states
+type LotteryUIState = 'loading' | 'error' | 'ticket-selection' | 'draw-popup' | 'results';
 
 export default function LotteryDetailPage() {
   const { user } = useAuth();
@@ -33,19 +33,19 @@ export default function LotteryDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
   
-  // UI and animation state
-  const [animationComplete, setAnimationComplete] = useState(false);
+  // Simplified UI state - only one popup can be active
   const [uiState, setUIState] = useState<LotteryUIState>('loading');
+  const [animationComplete, setAnimationComplete] = useState(false);
   
-  // Refs for tracking changes
-  const prevStatusRef = useRef<string | undefined>(lottery?.status);
+  // Throttle updates to prevent excessive re-renders
+  const lastUpdateTimeRef = useRef<number>(0);
+  const lastStatusRef = useRef<string | undefined>(undefined);
 
   // Add listener for navigation events to reset popup visibility
   useEffect(() => {
-    // Listen for route changes to reset state
     const handleRouteChange = () => {
       if (uiState === 'draw-popup') {
-        setUIState(lottery?.status === 'completed' ? 'results' : 'ticket-selection');
+        setUIState(lottery?.status === 'completed' && animationComplete ? 'results' : 'ticket-selection');
       }
     };
 
@@ -54,7 +54,7 @@ export default function LotteryDetailPage() {
     return () => {
       window.removeEventListener('popstate', handleRouteChange);
     };
-  }, [uiState, lottery?.status]);
+  }, [uiState, lottery?.status, animationComplete]);
   
   // Primary effect for lottery data monitoring
   useEffect(() => {
@@ -63,13 +63,11 @@ export default function LotteryDetailPage() {
 
     const loadData = async () => {
       try {
-        // Only set loading on initial load
         if (isMounted && !lottery) {
           setLoading(true);
           setUIState('loading');
         }
         
-        // Ensure we have a valid lotteryId from params
         if (!lotteryId) {
           setError('Invalid lottery ID');
           setLoading(false);
@@ -77,76 +75,75 @@ export default function LotteryDetailPage() {
           return;
         }
         
-        // Set up real-time subscription to lottery data
+        // Set up real-time subscription with throttling
         unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
           if (!isMounted) return;
           
           if (lotteryData) {
-            setLottery(lotteryData);
-            
-            // Log lottery view in analytics
-            analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
-            
-            // Central state management logic based on lottery status
+            // Add throttling logic
+            const now = Date.now();
+            const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
             const newStatus = lotteryData.status;
             
-            // Handle state transitions based on lottery status changes
-            if (newStatus === 'drawing' && prevStatusRef.current !== 'drawing') {
-              // When lottery transitions to drawing status, show the popup
-              console.log("Lottery status changed to drawing, showing popup");
-              setUIState('draw-popup');
-            } 
-            else if (newStatus === 'drawing') {
-              // Status is drawing but wasn't a transition - maintain current state
-              // This ensures we don't reset UI when just getting data updates
-              if (uiState !== 'draw-popup' && uiState !== 'draw-inline') {
+            // Only process important updates
+            if (
+              lastUpdateTimeRef.current === 0 || 
+              lastStatusRef.current !== newStatus || 
+              timeSinceLastUpdate > 2000
+            ) {
+              console.log(`Processing lottery update, status: ${newStatus}`);
+              
+              setLottery(lotteryData);
+              analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
+              
+              // Simplified state transitions
+              if (newStatus === 'drawing') {
+                // Show popup for all drawing lotteries
                 setUIState('draw-popup');
-              }
-            }
-            else if (newStatus === 'completed') {
-              // For completed lotteries, show results if animation is done
-              if (animationComplete) {
-                setUIState('results');
-              } else {
-                // Animation not complete - need to show draw first
-                setUIState('draw-inline');
-              }
-            }
-            else {
-              // Default to ticket selection for active lotteries
-              if (uiState === 'loading') {
+              } else if (newStatus === 'completed') {
+                // For completed lotteries, show results if animation is done
+                // otherwise show the drawing animation in popup
+                if (animationComplete) {
+                  setUIState('results');
+                } else {
+                  setUIState('draw-popup');
+                }
+              } else if (uiState === 'loading') {
+                // Default to ticket selection for active lotteries
                 setUIState('ticket-selection');
               }
-            }
-            
-            // Update previous status ref for next comparison
-            prevStatusRef.current = newStatus;
-            
-            // Reset animation complete state when lottery status changes
-            if (lotteryData.status !== 'completed') {
-              setAnimationComplete(false);
-            }
-            
-            // Fetch agent/host information if agentId exists
-            if (lotteryData.agentId) {
-              try {
-                const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
-                if (agentInfo && isMounted) {
-                  setHostName(agentInfo.name || 'Unknown Host');
-                }
-              } catch (agentError) {
-                console.error('Error fetching agent information:', agentError);
-                if (isMounted) {
-                  setHostName('Unknown Host');
+              
+              // Reset animation complete state when lottery status changes from completed
+              if (lastStatusRef.current === 'completed' && newStatus !== 'completed') {
+                setAnimationComplete(false);
+              }
+              
+              // Fetch agent info only on first load or when agent changes
+              if (!hostName || lastStatusRef.current !== newStatus) {
+                if (lotteryData.agentId) {
+                  try {
+                    const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
+                    if (agentInfo && isMounted) {
+                      setHostName(agentInfo.name || 'Unknown Host');
+                    }
+                  } catch (agentError) {
+                    console.error('Error fetching agent information:', agentError);
+                    if (isMounted) {
+                      setHostName('Unknown Host');
+                    }
+                  }
                 }
               }
+              
+              // Update timestamp and status reference
+              lastUpdateTimeRef.current = now;
+              lastStatusRef.current = newStatus;
             }
           } else {
             setError('Lottery not found or has been removed.');
             setUIState('error');
           }
           
-          // Clear loading state once data is received
           setLoading(false);
         });
 
@@ -161,7 +158,6 @@ export default function LotteryDetailPage() {
       }
     };
 
-    // Only load data if user is authenticated
     if (user) {
       loadData();
     }
@@ -170,36 +166,29 @@ export default function LotteryDetailPage() {
       isMounted = false;
       unsubscribeLottery();
     };
-  }, [lotteryId, user, uiState, animationComplete, lottery]);
+  }, [lotteryId, user, uiState, animationComplete, lottery, hostName]);
   
   // Handler for animation completion
   const handleDrawComplete = () => {
     console.log('Draw animation completed, updating UI');
     setAnimationComplete(true);
     
-    // Transition to results view after animation completes
+    // When animation completes and lottery is completed, show results
     if (lottery?.status === 'completed') {
       setUIState('results');
     }
-    
-    // Add a small delay to ensure smooth transition
-    setTimeout(() => {
-      if (uiState === 'draw-popup') {
-        setUIState('results');
-      }
-    }, 1000);
   };
   
   // Handle closing the popup
   const handleClosePopup = () => {
-    if (lottery?.status === 'completed') {
+    if (lottery?.status === 'completed' && animationComplete) {
       setUIState('results');
     } else {
       setUIState('ticket-selection');
     }
   };
   
-  // Function to check if lottery draw time has passed (for display purposes only)
+  // Function to check if lottery draw time has passed
   const hasDrawTimePassed = () => {
     if (!lottery) return false;
     
@@ -209,7 +198,7 @@ export default function LotteryDetailPage() {
     return now > drawTime;
   };
   
-  // If the UI is in loading state
+  // Loading state
   if (uiState === 'loading') {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -218,12 +207,11 @@ export default function LotteryDetailPage() {
     );
   }
 
-  // If the UI is in error state
+  // Error state
   if (uiState === 'error') {
     return <ErrorMessage message={error || "An error occurred"} />;
   }
 
-  // If no lottery data is available
   if (!lottery) {
     return <ErrorMessage message="Lottery information not available." />;
   }
@@ -436,18 +424,8 @@ export default function LotteryDetailPage() {
         </div>
       )}
       
-      {/* Main content area - Conditionally render based on UI state */}
+      {/* Main content area - Only two states: ticket selection or results */}
       <div className="mt-6">
-        {uiState === 'draw-inline' && (
-          <div className="mx-4">
-            <DrawMachine 
-              lotteryId={lotteryId} 
-              drawId={lottery.drawId}
-              onDrawComplete={handleDrawComplete}
-            />
-          </div>
-        )}
-        
         {uiState === 'results' && (
           <div className="mx-4">
             <h2 className="text-xl font-bold mb-4">Lottery Results</h2>
