@@ -218,8 +218,9 @@ export default function DrawMachine({
             clearInterval(countdownTimerRef.current);
           }
           
-          // Notify parent component if needed
+          // Notify parent component that animation is complete
           if (onDrawComplete) {
+            console.log("Calling onDrawComplete callback");
             onDrawComplete();
           }
         }
@@ -290,16 +291,6 @@ export default function DrawMachine({
           if (lotteryData) {
             console.log("Lottery data updated, status:", lotteryData.status);
             setLottery(lotteryData);
-            
-            // Check for status changes (specifically to "completed")
-            if (lotteryData.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS) {
-              console.log("Lottery status is 'completed' - should start ticket reveal");
-              
-              // If lottery has a drawId and none was provided, use that one
-              if (lotteryData.drawId && !drawId) {
-                loadDrawSequence(lotteryData.drawId, true);
-              }
-            }
             
             // If lottery has a drawId and none was provided, use that one
             if (lotteryData.drawId && !drawId) {
@@ -394,17 +385,17 @@ export default function DrawMachine({
         clearInterval(countdownTimerRef.current);
       }
     };
-  }, [lotteryId, drawId, startTicketReveal, machineState.status]);
+  }, [lotteryId, drawId, startTicketReveal]);
   
-  // Separate effect to handle lottery status changes
+  // This effect is the only place that responds to 'completed' status
   useEffect(() => {
-    if (lottery?.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS) {
+    if (lottery?.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS && !showWinners) {
       console.log("Lottery status is 'completed' - starting ticket reveal animation");
       setTimeout(() => {
         startTicketReveal();
       }, 500);
     }
-  }, [lottery?.status, machineState.status, startTicketReveal]);
+  }, [lottery?.status, machineState.status, startTicketReveal, showWinners]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -547,6 +538,12 @@ export default function DrawMachine({
               ...prevState,
               status: COMPLETE_STATUS
             }));
+            
+            // Notify parent component that animation is complete
+            if (onDrawComplete) {
+              console.log("Calling onDrawComplete callback after celebration");
+              onDrawComplete();
+            }
           }, 7000); // 7 second celebration delay
           break;
       }
@@ -554,7 +551,7 @@ export default function DrawMachine({
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets]);
+  }, [drawSequence, machineState, tickets, onDrawComplete]);
   
   // Loading and error states
   if (loading) {
