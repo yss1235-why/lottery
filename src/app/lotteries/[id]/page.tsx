@@ -460,8 +460,8 @@ export default function LotteryDetailPage() {
       
       {/* Draw Popup Modal - Always visible when lottery status is drawing */}
       {showDrawPopup && lottery?.status === 'drawing' && (
-        <div className="fixed inset-0 bg-neutral-dark/90 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 backdrop-blur-md bg-neutral-dark/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10">
             <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
               <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
               <button 
