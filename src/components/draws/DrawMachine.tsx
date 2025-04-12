@@ -20,7 +20,7 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdPause, MdPlayArrow, MdReplay } from 'react-icons/md';
+import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay } from 'react-icons/md';
 
 interface DrawMachineProps {
   lotteryId: string;
@@ -368,14 +368,17 @@ export default function DrawMachine({
   const renderDrawContent = () => {
     if (!lottery) return null;
     
-    // If draw hasn't started, show waiting message
+    // If draw hasn't started or no sequence exists, show a basic animation
     if (!drawSequence) {
       return (
-        <div className="flex flex-col items-center justify-center">
-          <h3 className="text-xl font-bold mb-4">Draw has not started yet</h3>
-          <p className="text-neutral-light/70">
-            The draw for this lottery has not been started yet.
-            Please check back later.
+        <div className="flex flex-col items-center justify-center h-full py-12">
+          <div className="animate-spin mb-4">
+            <MdLocalPlay size={48} className="text-prize-gold" />
+          </div>
+          <h3 className="text-xl font-bold mb-4">Draw in progress</h3>
+          <p className="text-neutral-light/70 max-w-md text-center">
+            The draw for this lottery is currently being prepared.
+            Please wait while we set up the drawing process.
           </p>
         </div>
       );
