@@ -68,48 +68,58 @@ export default function DrawMachine({
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketsContainerRef = useRef<HTMLDivElement>(null);
   
-  // Character reveal function - wrapped in useCallback to avoid dependency issues
-  const startCharacterReveal = useCallback(() => {
-    // Reset character reveal state
-    setCurrentCharacterIndex(-1);
-    
-    // Start the character reveal sequence
-    setMachineState({
-      ...machineState,
-      status: CHARACTER_REVEAL_STATUS
-    });
-    
-    // Reveal the first character
-    revealNextCharacter();
-  }, [machineState]);
-  
-  // Function to reveal the next character in sequence - also wrapped in useCallback
+  // Function to reveal the next character in sequence
   const revealNextCharacter = useCallback(() => {
     // Clear any existing timers
     if (characterRevealTimerRef.current) {
       clearTimeout(characterRevealTimerRef.current);
     }
     
-    const nextIndex = currentCharacterIndex + 1;
+    setCurrentCharacterIndex(prevIndex => {
+      const nextIndex = prevIndex + 1;
+      
+      // Check if we've revealed all characters
+      if (nextIndex >= characters.length) {
+        // All characters revealed, return to complete state
+        setMachineState(prevState => ({
+          ...prevState,
+          status: COMPLETE_STATUS
+        }));
+        return prevIndex; // Keep the current index
+      }
+      
+      // Schedule the next character reveal after 5 seconds
+      characterRevealTimerRef.current = setTimeout(() => {
+        revealNextCharacter();
+      }, 5000 / machineState.speed);
+      
+      return nextIndex; // Return the new index
+    });
+  }, [characters.length, machineState.speed]);
+  
+  // Character reveal function - wrapped in useCallback to avoid dependency issues
+  const startCharacterReveal = useCallback(() => {
+    // Reset character reveal state
+    setCurrentCharacterIndex(-1);
     
-    // Check if we've revealed all characters
-    if (nextIndex >= characters.length) {
-      // All characters revealed, return to complete state
-      setMachineState({
-        ...machineState,
-        status: COMPLETE_STATUS
-      });
-      return;
+    // Start the character reveal sequence
+    setMachineState(prevState => ({
+      ...prevState,
+      status: CHARACTER_REVEAL_STATUS
+    }));
+    
+    // Reveal the first character - manually inlined instead of calling revealNextCharacter
+    if (characterRevealTimerRef.current) {
+      clearTimeout(characterRevealTimerRef.current);
     }
     
-    // Set the current character index
-    setCurrentCharacterIndex(nextIndex);
+    setCurrentCharacterIndex(0); // Start with first character
     
     // Schedule the next character reveal after 5 seconds
     characterRevealTimerRef.current = setTimeout(() => {
       revealNextCharacter();
-    }, 5000 / machineState.speed); // 5 second delay adjusted by speed
-  }, [characters.length, currentCharacterIndex, machineState]);
+    }, 5000 / machineState.speed);
+  }, [machineState.speed, revealNextCharacter]);
   
   // Initialize and load data
   useEffect(() => {
@@ -176,16 +186,16 @@ export default function DrawMachine({
           
           // Update machine state based on draw status
           if (drawData.status === 'pending') {
-            setMachineState({
-              ...machineState,
+            setMachineState(prevState => ({
+              ...prevState,
               status: IDLE_STATUS
-            });
+            }));
           } else if (drawData.status === 'completed') {
-            setMachineState({
-              ...machineState,
+            setMachineState(prevState => ({
+              ...prevState,
               status: COMPLETE_STATUS,
               currentStep: drawData.steps.length - 1
-            });
+            }));
           }
         }
       });
@@ -202,7 +212,7 @@ export default function DrawMachine({
         clearTimeout(characterRevealTimerRef.current);
       }
     };
-  }, [lotteryId, drawId, machineState]);
+  }, [lotteryId, drawId]);
   
   // Handle draw completion
   useEffect(() => {
@@ -252,7 +262,7 @@ export default function DrawMachine({
     const executeStep = async () => {
       switch (currentStep.action) {
         case 'shuffle':
-          setMachineState({ ...machineState, status: SHUFFLING_STATUS });
+          setMachineState(prevState => ({ ...prevState, status: SHUFFLING_STATUS }));
           const shuffledTickets = await shuffleTicketsAnimation(
             tickets, 
             containerElement, 
@@ -263,18 +273,18 @@ export default function DrawMachine({
           // Add delay before moving to next step
           setTimeout(() => {
             if (currentStepIndex < drawSequence.steps.length - 1) {
-              setMachineState({
-                ...machineState,
+              setMachineState(prevState => ({
+                ...prevState,
                 status: IDLE_STATUS,
                 currentStep: currentStepIndex + 1
-              });
+              }));
             }
           }, 1500 / machineState.speed); // 1.5 second delay adjusted by speed
           break;
           
         case 'select':
           if (currentStep.ticketNumber) {
-            setMachineState({ ...machineState, status: SELECTING_STATUS });
+            setMachineState(prevState => ({ ...prevState, status: SELECTING_STATUS }));
             selectTicketAnimation(currentStep.ticketNumber, containerElement, () => {
               // Update ticket status with type assertion
               const updatedTickets = tickets.map(ticket => {
@@ -288,11 +298,11 @@ export default function DrawMachine({
               // Move to next step with a delay
               setTimeout(() => {
                 if (currentStepIndex < drawSequence.steps.length - 1) {
-                  setMachineState({
-                    ...machineState,
+                  setMachineState(prevState => ({
+                    ...prevState,
                     status: IDLE_STATUS,
                     currentStep: currentStepIndex + 1
-                  });
+                  }));
                 }
               }, 2500 / machineState.speed); // 2.5 second delay adjusted by speed
             });
@@ -301,7 +311,7 @@ export default function DrawMachine({
           
         case 'reveal':
           if (currentStep.ticketNumber !== undefined && currentStep.prizeIndex !== undefined) {
-            setMachineState({ ...machineState, status: REVEALING_STATUS });
+            setMachineState(prevState => ({ ...prevState, status: REVEALING_STATUS }));
             
             // Find the winner for this ticket
             const winner = drawSequence.winners.find(
@@ -333,11 +343,11 @@ export default function DrawMachine({
                   // Move to next step with a longer delay for prize reveal
                   setTimeout(() => {
                     if (currentStepIndex < drawSequence.steps.length - 1) {
-                      setMachineState({
-                        ...machineState,
+                      setMachineState(prevState => ({
+                        ...prevState,
                         status: IDLE_STATUS,
                         currentStep: currentStepIndex + 1
-                      });
+                      }));
                     }
                   }, 4000 / machineState.speed); // 4 second delay adjusted by speed
                 });
@@ -347,7 +357,7 @@ export default function DrawMachine({
           break;
           
         case 'celebrate':
-          setMachineState({ ...machineState, status: CELEBRATING_STATUS });
+          setMachineState(prevState => ({ ...prevState, status: CELEBRATING_STATUS }));
           setShowConfetti(true);
           
           // Trigger celebration animation
@@ -356,10 +366,10 @@ export default function DrawMachine({
           // End celebration after a significant delay to ensure animation completes
           setTimeout(() => {
             setShowConfetti(false);
-            setMachineState({
-              ...machineState,
+            setMachineState(prevState => ({
+              ...prevState,
               status: COMPLETE_STATUS
-            });
+            }));
           }, 7000 / machineState.speed); // 7 second celebration delay adjusted by speed
           break;
       }
@@ -367,7 +377,7 @@ export default function DrawMachine({
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets, isPaused, onDrawComplete, revealNextCharacter]);
+  }, [drawSequence, machineState, tickets, isPaused, onDrawComplete]);
   
   // User control functions
   const playDraw = () => {
