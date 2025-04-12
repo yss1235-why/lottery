@@ -18,30 +18,35 @@ import { analyticsService } from '@/services/analytics-service';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, MdNotifications } from 'react-icons/md';
 
+// Define UI states as a type for better type checking
+type LotteryUIState = 'loading' | 'error' | 'ticket-selection' | 'draw-inline' | 'draw-popup' | 'results';
+
 export default function LotteryDetailPage() {
   const { user } = useAuth();
   const { id } = useParams();
   // Convert id to string and provide a default value if it's undefined
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
   
+  // Primary state variables
   const [lottery, setLottery] = useState<Lottery | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
-  const [showDrawNotification, setShowDrawNotification] = useState(false);
-  const [showDrawPopup, setShowDrawPopup] = useState(false);
   
-  // Add state to track animation completion
+  // UI and animation state
   const [animationComplete, setAnimationComplete] = useState(false);
+  const [uiState, setUIState] = useState<LotteryUIState>('loading');
   
-  // Track lottery status changes for draw popup only
+  // Refs for tracking changes
   const prevStatusRef = useRef<string | undefined>(lottery?.status);
 
   // Add listener for navigation events to reset popup visibility
   useEffect(() => {
-    // Listen for route changes to reset popup state
+    // Listen for route changes to reset state
     const handleRouteChange = () => {
-      setShowDrawPopup(false);
+      if (uiState === 'draw-popup') {
+        setUIState(lottery?.status === 'completed' ? 'results' : 'ticket-selection');
+      }
     };
 
     window.addEventListener('popstate', handleRouteChange);
@@ -49,8 +54,9 @@ export default function LotteryDetailPage() {
     return () => {
       window.removeEventListener('popstate', handleRouteChange);
     };
-  }, []);
+  }, [uiState, lottery?.status]);
   
+  // Primary effect for lottery data monitoring
   useEffect(() => {
     let isMounted = true;
     let unsubscribeLottery = () => {};
@@ -60,12 +66,14 @@ export default function LotteryDetailPage() {
         // Only set loading on initial load
         if (isMounted && !lottery) {
           setLoading(true);
+          setUIState('loading');
         }
         
         // Ensure we have a valid lotteryId from params
         if (!lotteryId) {
           setError('Invalid lottery ID');
           setLoading(false);
+          setUIState('error');
           return;
         }
         
@@ -79,29 +87,40 @@ export default function LotteryDetailPage() {
             // Log lottery view in analytics
             analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
             
-            // Check if tickets are fully booked but draw hasn't started
-            const isFullyBooked = lotteryData.ticketCapacity > 0 && 
-                                (lotteryData.ticketsBooked || 0) >= lotteryData.ticketCapacity;
+            // Central state management logic based on lottery status
+            const newStatus = lotteryData.status;
             
-            if (isFullyBooked && lotteryData.status === 'active') {
-              setShowDrawNotification(true);
-            } else {
-              setShowDrawNotification(false);
+            // Handle state transitions based on lottery status changes
+            if (newStatus === 'drawing' && prevStatusRef.current !== 'drawing') {
+              // When lottery transitions to drawing status, show the popup
+              console.log("Lottery status changed to drawing, showing popup");
+              setUIState('draw-popup');
+            } 
+            else if (newStatus === 'drawing') {
+              // Status is drawing but wasn't a transition - maintain current state
+              // This ensures we don't reset UI when just getting data updates
+              if (uiState !== 'draw-popup' && uiState !== 'draw-inline') {
+                setUIState('draw-popup');
+              }
+            }
+            else if (newStatus === 'completed') {
+              // For completed lotteries, show results if animation is done
+              if (animationComplete) {
+                setUIState('results');
+              } else {
+                // Animation not complete - need to show draw first
+                setUIState('draw-inline');
+              }
+            }
+            else {
+              // Default to ticket selection for active lotteries
+              if (uiState === 'loading') {
+                setUIState('ticket-selection');
+              }
             }
             
-            // Only check for 'drawing' status changes for the popup
-            if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
-              // Auto-show the draw popup when lottery status changes to drawing
-              setShowDrawPopup(true);
-            }
-            
-            // Always show the draw popup when lottery is in drawing state
-            if (lotteryData.status === 'drawing') {
-              setShowDrawPopup(true);
-            }
-            
-            // Update previous status ref
-            prevStatusRef.current = lotteryData.status;
+            // Update previous status ref for next comparison
+            prevStatusRef.current = newStatus;
             
             // Reset animation complete state when lottery status changes
             if (lotteryData.status !== 'completed') {
@@ -124,6 +143,7 @@ export default function LotteryDetailPage() {
             }
           } else {
             setError('Lottery not found or has been removed.');
+            setUIState('error');
           }
           
           // Clear loading state once data is received
@@ -136,6 +156,7 @@ export default function LotteryDetailPage() {
         if (isMounted) {
           setError('Failed to load lottery data. Please try again.');
           setLoading(false);
+          setUIState('error');
         }
       }
     };
@@ -149,18 +170,32 @@ export default function LotteryDetailPage() {
       isMounted = false;
       unsubscribeLottery();
     };
-  }, [lotteryId, user, lottery]);
+  }, [lotteryId, user, uiState, animationComplete, lottery]);
   
   // Handler for animation completion
   const handleDrawComplete = () => {
     console.log('Draw animation completed, updating UI');
     setAnimationComplete(true);
     
-    // Close the draw popup when animation completes
-    if (showDrawPopup) {
-      setTimeout(() => {
-        setShowDrawPopup(false);
-      }, 3000); // Close popup 3 seconds after animation completes
+    // Transition to results view after animation completes
+    if (lottery?.status === 'completed') {
+      setUIState('results');
+    }
+    
+    // Add a small delay to ensure smooth transition
+    setTimeout(() => {
+      if (uiState === 'draw-popup') {
+        setUIState('results');
+      }
+    }, 1000);
+  };
+  
+  // Handle closing the popup
+  const handleClosePopup = () => {
+    if (lottery?.status === 'completed') {
+      setUIState('results');
+    } else {
+      setUIState('ticket-selection');
     }
   };
   
@@ -174,7 +209,8 @@ export default function LotteryDetailPage() {
     return now > drawTime;
   };
   
-  if (loading) {
+  // If the UI is in loading state
+  if (uiState === 'loading') {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner />
@@ -182,10 +218,12 @@ export default function LotteryDetailPage() {
     );
   }
 
-  if (error) {
-    return <ErrorMessage message={error} />;
+  // If the UI is in error state
+  if (uiState === 'error') {
+    return <ErrorMessage message={error || "An error occurred"} />;
   }
 
+  // If no lottery data is available
   if (!lottery) {
     return <ErrorMessage message="Lottery information not available." />;
   }
@@ -197,8 +235,10 @@ export default function LotteryDetailPage() {
   // Format date for display
   const drawDateFormatted = formatDate(lottery.drawTime);
   
-  // Determine if we should show the draw results based on status AND animation completion
-  const showDrawResults = lottery.status === 'completed' && animationComplete;
+  // Check if all tickets are booked but draw hasn't started
+  const shouldShowDrawNotification = 
+    ticketsRemaining === 0 && 
+    lottery.status === 'active';
   
   return (
     <div className="lottery-detail pb-20">
@@ -382,7 +422,7 @@ export default function LotteryDetailPage() {
       </div>
       
       {/* Draw Notification - Show when tickets are fully booked but draw hasn't started */}
-      {showDrawNotification && lottery.status === 'active' && (
+      {shouldShowDrawNotification && (
         <div className="bg-prize-gold/10 mx-4 mt-4 p-4 rounded-lg border border-prize-gold/30">
           <div className="flex items-center">
             <MdNotifications className="text-prize-gold mr-3" size={24} />
@@ -396,9 +436,9 @@ export default function LotteryDetailPage() {
         </div>
       )}
       
-      {/* Main content area - Show draw animation or results based on status AND animation completion */}
+      {/* Main content area - Conditionally render based on UI state */}
       <div className="mt-6">
-        {(lottery.status === 'drawing' || (lottery.status === 'completed' && !animationComplete)) && !showDrawPopup ? (
+        {uiState === 'draw-inline' && (
           <div className="mx-4">
             <DrawMachine 
               lotteryId={lotteryId} 
@@ -406,7 +446,9 @@ export default function LotteryDetailPage() {
               onDrawComplete={handleDrawComplete}
             />
           </div>
-        ) : showDrawResults ? (
+        )}
+        
+        {uiState === 'results' && (
           <div className="mx-4">
             <h2 className="text-xl font-bold mb-4">Lottery Results</h2>
             <div className="bg-neutral-dark rounded-lg p-4">
@@ -450,7 +492,9 @@ export default function LotteryDetailPage() {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+        
+        {uiState === 'ticket-selection' && (
           <div>
             {hasDrawTimePassed() && (
               <div className="bg-alert/10 mx-4 p-3 rounded-lg mb-4 text-center">
@@ -464,8 +508,8 @@ export default function LotteryDetailPage() {
         )}
       </div>
       
-      {/* Single Draw Popup Modal - Only for 'drawing' status */}
-      {(showDrawPopup && lottery?.status === 'drawing') && (
+      {/* Single Draw Popup Modal - Only shown in draw-popup state */}
+      {uiState === 'draw-popup' && (
         <div className="fixed inset-0 backdrop-blur-md bg-neutral-dark/80 flex items-center justify-center z-50 p-4">
           <motion.div 
             className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10"
@@ -481,7 +525,7 @@ export default function LotteryDetailPage() {
                 <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
               </div>
               <button 
-                onClick={() => setShowDrawPopup(false)}
+                onClick={handleClosePopup}
                 className="text-neutral-light/70 hover:text-white transition-colors"
                 aria-label="Close draw popup"
               >
