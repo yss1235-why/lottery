@@ -283,7 +283,7 @@ export default function DrawMachine({
     ticketRevealTimerRef.current = setTimeout(() => {
       processTicketReveal();
     }, 1000);
-  }, [processTicketReveal, scrambleTicketId, winnerTickets, drawSequence]);
+  }, [processTicketReveal, scrambleTicketId, winnerTickets, drawSequence, completionCallbackFired]);
   
   // Initialize and load data
   useEffect(() => {
@@ -565,7 +565,7 @@ export default function DrawMachine({
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets, onDrawComplete]);
+  }, [drawSequence, machineState, tickets, onDrawComplete, completionCallbackFired]);
   
   // Loading and error states
   if (loading) {
@@ -733,7 +733,7 @@ export default function DrawMachine({
           </div>
           <h3 className="text-xl font-bold mb-4">Preparing Results</h3>
           <p className="text-neutral-light/70 max-w-md text-center">
-            The draw has been completed. We're preparing to show you the winners...
+            The draw has been completed. We&apos;re preparing to show you the winners...
           </p>
         </div>
       );
