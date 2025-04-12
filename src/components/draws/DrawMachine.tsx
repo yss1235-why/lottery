@@ -724,24 +724,110 @@ export default function DrawMachine({
       );
     }
     
-    // Unified loading state - adapts message based on lottery status
-    if (!drawSequence) {
+    // Draw machine visualization - don't show loading states
+    if (drawSequence) {
       return (
-        <div className="flex flex-col items-center justify-center h-full py-12">
-          <div className="animate-spin mb-4">
-            <MdLocalPlay size={48} className="text-prize-gold" />
+        <>
+          <div 
+            ref={containerRef}
+            className="draw-machine-container relative bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden"
+            style={{ height: isPopup ? '350px' : '400px' }}
+          >
+            {/* Tickets Container */}
+            <div 
+              ref={ticketsContainerRef}
+              className="tickets-container absolute inset-0"
+            >
+              {tickets.map((ticket) => (
+                <motion.div
+                  key={ticket.number}
+                  className={`draw-ticket absolute ${
+                    ticket.status === 'selected' ? 'selected' :
+                    ticket.status === 'winning' ? 'winning' :
+                    ticket.status === 'not-selected' ? 'not-selected' : ''
+                  }`}
+                  data-number={ticket.number}
+                  initial={{
+                    x: ticket.position.x,
+                    y: ticket.position.y,
+                    rotate: ticket.position.rotation,
+                    scale: 0
+                  }}
+                  animate={{
+                    x: ticket.position.x,
+                    y: ticket.position.y,
+                    rotate: ticket.position.rotation,
+                    scale: 1
+                  }}
+                  transition={{
+                    duration: 0.5,
+                    delay: ticket.number * 0.01
+                  }}
+                >
+                  {ticket.number}
+                </motion.div>
+              ))}
+            </div>
+            
+            {/* Prize Display */}
+            <AnimatePresence>
+              {selectedWinner && (
+                <motion.div
+                  id="prize-display"
+                  className="prize-display absolute top-20 right-10 bg-neutral-dark p-4 rounded-lg shadow-lg z-10"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                >
+                  <h3 className="text-lg font-bold mb-2">{selectedWinner.prize.name}</h3>
+                  <div className="text-prize-gold font-dm-mono text-xl">
+                    {typeof selectedWinner.prize.value === 'number' 
+                      ? formatCurrency(selectedWinner.prize.value)
+                      : selectedWinner.prize.value}
+                  </div>
+                  <div className="mt-2 text-sm text-neutral-light/70">
+                    Winner: {selectedWinner.playerName}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
+            {/* Status Display */}
+            <div className="status-display absolute bottom-4 left-4 bg-neutral-dark/80 px-3 py-1 rounded-full text-sm">
+              {machineState.status === IDLE_STATUS ? 'Ready' :
+               machineState.status === SHUFFLING_STATUS ? 'Shuffling tickets...' :
+               machineState.status === SELECTING_STATUS ? 'Selecting ticket...' :
+               machineState.status === REVEALING_STATUS ? 'Revealing winner...' :
+               machineState.status === CELEBRATING_STATUS ? 'Celebrating winners!' :
+               machineState.status === TICKET_REVEAL_STATUS ? 'Revealing ticket IDs...' :
+               machineState.status === COMPLETE_STATUS ? 'Draw completed' : ''}
+            </div>
+            
+            {/* Confetti Effect */}
+            {showConfetti && (
+              <div className="absolute inset-0 pointer-events-none">
+                <Confetti />
+              </div>
+            )}
           </div>
-          <h3 className="text-xl font-bold mb-4">
-            {lottery.status === 'completed' ? 'Preparing Results' : 'Draw in Progress'}
-          </h3>
-          <p className="text-neutral-light/70 max-w-md text-center">
-            {lottery.status === 'completed' 
-              ? 'The draw has been completed. We&apos;re preparing to show you the winners...' 
-              : 'The draw for this lottery is currently being prepared. Please wait while we set up the drawing process.'}
-          </p>
-        </div>
+        </>
       );
     }
+    
+    // Default state when no draw sequence exists yet - simple "Draw in Progress" animation
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-12">
+        <div className="animate-spin mb-4">
+          <MdLocalPlay size={48} className="text-prize-gold" />
+        </div>
+        <h3 className="text-xl font-bold mb-4">Draw in Progress</h3>
+        <p className="text-neutral-light/70 max-w-md text-center">
+          The draw for this lottery is currently being prepared.
+          Please wait while we set up the drawing process.
+        </p>
+      </div>
+    );
+  };
     
     // Draw is in progress or completed, show the draw machine
     return (
