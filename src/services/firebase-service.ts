@@ -26,7 +26,7 @@ import { Prize } from '@/types/prize';
 import { Winner } from '@/types/winner';
 import { Draw } from '@/types/draw';
 import { GameTheme } from '@/types/theme';
-import { DrawSequence, DrawStep, DrawWinner } from '@/types/draw-sequence';
+import { DrawSequence, DrawStep, DrawWinner, Character } from '@/types/draw-sequence';
 
 // Define types for Firebase data
 interface AgentData {
@@ -1398,5 +1398,102 @@ export const firebaseService = {
     return () => {
       off(themesRef, 'value', handleData);
     };
+  },
+
+  /**
+   * Fetches characters for draw animation
+   * @param lotteryId The ID of the lottery to fetch characters for
+   * @returns Promise with an array of character objects
+   */
+  async getDrawCharacters(lotteryId: string): Promise<Character[]> {
+    try {
+      // First try to get lottery-specific characters
+      const lotteryCharactersRef = ref(database, `lotteryCharacters/${lotteryId}`);
+      let snapshot = await get(lotteryCharactersRef);
+      
+      if (snapshot.exists()) {
+        const characters: Character[] = [];
+        snapshot.forEach((childSnapshot) => {
+          characters.push({
+            id: childSnapshot.key as string,
+            ...childSnapshot.val()
+          });
+        });
+        return characters;
+      }
+      
+      // If no lottery-specific characters, get global characters
+      const globalCharactersRef = ref(database, 'characters');
+      snapshot = await get(globalCharactersRef);
+      
+      if (snapshot.exists()) {
+        const characters: Character[] = [];
+        snapshot.forEach((childSnapshot) => {
+          characters.push({
+            id: childSnapshot.key as string,
+            ...childSnapshot.val()
+          });
+        });
+        return characters;
+      }
+      
+      // If no characters found, use default mock data
+      return [
+        {
+          id: 'char1',
+          name: 'Mystery Character 1',
+          description: 'A mysterious character awaiting reveal',
+          type: 'mystery'
+        },
+        {
+          id: 'char2',
+          name: 'Mystery Character 2',
+          description: 'Another mysterious character',
+          type: 'mystery'
+        },
+        {
+          id: 'char3',
+          name: 'Mystery Character 3',
+          description: 'Yet another mysterious character',
+          type: 'mystery'
+        },
+        {
+          id: 'char4',
+          name: 'Mystery Character 4',
+          description: 'A rare mysterious character',
+          type: 'mystery'
+        },
+        {
+          id: 'char5',
+          name: 'Mystery Character 5',
+          description: 'The final mysterious character',
+          type: 'mystery'
+        }
+      ];
+    } catch (error) {
+      console.error('Error fetching characters:', error);
+      
+      // Return mock data in case of error
+      return [
+        {
+          id: 'char1',
+          name: 'Mystery Character 1',
+          description: 'A mysterious character awaiting reveal',
+          type: 'mystery'
+        },
+        {
+          id: 'char2',
+          name: 'Mystery Character 2',
+          description: 'Another mysterious character',
+          type: 'mystery'
+        },
+        {
+          id: 'char3',
+          name: 'Mystery Character 3',
+          description: 'Yet another mysterious character',
+          type: 'mystery'
+        }
+      ];
+    }
   }
 };
