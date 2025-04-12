@@ -8,7 +8,6 @@ import {
   DrawSequence, 
   DrawWinner, 
   AnimatedTicket,
-  Character
 } from '@/types/draw-sequence';
 import { Lottery } from '@/types/lottery';
 import { 
@@ -21,7 +20,7 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdPerson, MdTimer } from 'react-icons/md';
+import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdTimer } from 'react-icons/md';
 import Image from 'next/image';
 
 interface DrawMachineProps {
@@ -38,7 +37,15 @@ const SELECTING_STATUS = 'selecting';
 const REVEALING_STATUS = 'revealing';
 const CELEBRATING_STATUS = 'celebrating';
 const COMPLETE_STATUS = 'complete';
-const CHARACTER_REVEAL_STATUS = 'character-reveal';
+const TICKET_REVEAL_STATUS = 'ticket-reveal';
+
+// Represents a character in the ticket ID with its state
+interface TicketChar {
+  char: string;
+  isRevealed: boolean;
+  originalIndex: number;
+  currentIndex: number;
+}
 
 export default function DrawMachine({ 
   lotteryId, 
@@ -60,17 +67,60 @@ export default function DrawMachine({
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   
-  // Character reveal states
-  const [characters, setCharacters] = useState<Character[]>([]);
-  const [currentCharacterIndex, setCurrentCharacterIndex] = useState(-1);
+  // Ticket ID reveal states
+  const [winnerTickets, setWinnerTickets] = useState<string[]>([]);
+  const [currentTicketIndex, setCurrentTicketIndex] = useState(-1);
+  const [currentTicketChars, setCurrentTicketChars] = useState<TicketChar[]>([]);
   const [timeUntilNextReveal, setTimeUntilNextReveal] = useState(5);
-  const characterRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [revealPhase, setRevealPhase] = useState<'scramble' | 'reveal' | 'complete'>('scramble');
+  const ticketRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Generate a scrambled version of a ticket ID
+  const scrambleTicketId = useCallback((ticketId: string): TicketChar[] => {
+    // Convert ticket ID to array of characters
+    const chars = ticketId.split('');
+    
+    // Create array of objects with original positions
+    const ticketChars: TicketChar[] = chars.map((char, index) => ({
+      char,
+      isRevealed: false,
+      originalIndex: index,
+      currentIndex: index
+    }));
+    
+    // Shuffle the array to randomize positions
+    const shuffled = [...ticketChars].sort(() => Math.random() - 0.5);
+    
+    // Update current positions after shuffle
+    shuffled.forEach((char, index) => {
+      char.currentIndex = index;
+    });
+    
+    // Initially hide some characters (25-50% of them)
+    const numToHide = Math.max(1, Math.floor(chars.length * (Math.random() * 0.25 + 0.25)));
+    const hiddenIndices = new Set<number>();
+    
+    while (hiddenIndices.size < numToHide) {
+      hiddenIndices.add(Math.floor(Math.random() * chars.length));
+    }
+    
+    // Mark characters as hidden
+    shuffled.forEach(char => {
+      if (hiddenIndices.has(char.originalIndex)) {
+        char.isRevealed = false;
+      } else {
+        char.isRevealed = true;
+      }
+    });
+    
+    return shuffled;
+  }, []);
   
-  // Reset countdown timer for character reveals
+  // Reset countdown timer for ticket reveals
   const resetCountdown = useCallback(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -81,7 +131,7 @@ export default function DrawMachine({
     countdownTimerRef.current = setInterval(() => {
       setTimeUntilNextReveal(prev => {
         if (prev <= 1) {
-          // When reaching 0, clear the interval - next character will reset it
+          // When reaching 0, clear the interval - next action will reset it
           if (countdownTimerRef.current) {
             clearInterval(countdownTimerRef.current);
           }
@@ -92,74 +142,116 @@ export default function DrawMachine({
     }, 1000 / machineState.speed);
   }, [machineState.speed]);
   
-  // Function to reveal the next character in sequence
-  const revealNextCharacter = useCallback(() => {
+  // Function to manage the ticket ID reveal animation phases
+  const processTicketReveal = useCallback(() => {
     // Clear any existing timers
-    if (characterRevealTimerRef.current) {
-      clearTimeout(characterRevealTimerRef.current);
+    if (ticketRevealTimerRef.current) {
+      clearTimeout(ticketRevealTimerRef.current);
     }
     
-    setCurrentCharacterIndex(prevIndex => {
-      const nextIndex = prevIndex + 1;
-      
-      // Check if we've revealed all characters
-      if (nextIndex >= characters.length) {
-        // All characters revealed, return to complete state
-        setMachineState(prevState => ({
-          ...prevState,
-          status: COMPLETE_STATUS
+    // Handle different phases of the reveal
+    if (revealPhase === 'scramble') {
+      // Reveal all scrambled characters first
+      setCurrentTicketChars(prev => {
+        return prev.map(char => ({
+          ...char,
+          isRevealed: true
         }));
-        
-        // Clear countdown
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-        }
-        
-        return prevIndex; // Keep the current index
-      }
+      });
       
-      // Reset countdown for next character
+      // Set next phase to reveal (unscramble)
+      setRevealPhase('reveal');
+      
+      // Schedule the reveal phase after a delay
       resetCountdown();
-      
-      // Schedule the next character reveal after 5 seconds
-      characterRevealTimerRef.current = setTimeout(() => {
-        revealNextCharacter();
+      ticketRevealTimerRef.current = setTimeout(() => {
+        processTicketReveal();
       }, 5000 / machineState.speed);
+    } 
+    else if (revealPhase === 'reveal') {
+      // Move characters back to their original positions
+      setCurrentTicketChars(prev => {
+        return prev.map(char => ({
+          ...char,
+          currentIndex: char.originalIndex,
+          isRevealed: true
+        }));
+      });
       
-      return nextIndex; // Return the new index
-    });
-  }, [characters.length, machineState.speed, resetCountdown]);
+      // Set phase to complete
+      setRevealPhase('complete');
+      
+      // Schedule the next ticket reveal after a delay
+      resetCountdown();
+      ticketRevealTimerRef.current = setTimeout(() => {
+        // Check if there are more tickets to reveal
+        if (currentTicketIndex < winnerTickets.length - 1) {
+          // Move to next ticket
+          setCurrentTicketIndex(idx => idx + 1);
+          // Reset phase for next ticket
+          setRevealPhase('scramble');
+          
+          // Get next ticket and scramble it
+          const nextTicket = winnerTickets[currentTicketIndex + 1];
+          setCurrentTicketChars(scrambleTicketId(nextTicket));
+          
+          // Continue the process
+          ticketRevealTimerRef.current = setTimeout(() => {
+            processTicketReveal();
+          }, 1000 / machineState.speed);
+        } else {
+          // All tickets revealed
+          setMachineState(prev => ({
+            ...prev,
+            status: COMPLETE_STATUS
+          }));
+          
+          // Clear countdown
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+          }
+        }
+      }, 5000 / machineState.speed);
+    }
+  }, [currentTicketIndex, machineState.speed, resetCountdown, revealPhase, scrambleTicketId, winnerTickets]);
   
-  // Character reveal function - wrapped in useCallback to avoid dependency issues
-  const startCharacterReveal = useCallback(() => {
-    // Reset character reveal state
-    setCurrentCharacterIndex(-1);
-    
-    // Start the character reveal sequence
-    setMachineState(prevState => ({
-      ...prevState,
-      status: CHARACTER_REVEAL_STATUS
-    }));
+  // Start the ticket ID reveal process
+  const startTicketReveal = useCallback(() => {
+    // Reset state
+    setCurrentTicketIndex(0);
+    setRevealPhase('scramble');
     
     // Clear any existing timers
-    if (characterRevealTimerRef.current) {
-      clearTimeout(characterRevealTimerRef.current);
+    if (ticketRevealTimerRef.current) {
+      clearTimeout(ticketRevealTimerRef.current);
     }
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
     }
     
-    // Start with first character
-    setCurrentCharacterIndex(0);
+    // Set machine state
+    setMachineState(prev => ({
+      ...prev,
+      status: TICKET_REVEAL_STATUS
+    }));
     
-    // Start countdown
-    resetCountdown();
-    
-    // Schedule the next character reveal after 5 seconds
-    characterRevealTimerRef.current = setTimeout(() => {
-      revealNextCharacter();
-    }, 5000 / machineState.speed);
-  }, [machineState.speed, revealNextCharacter, resetCountdown]);
+    // Initialize with first ticket ID if available
+    if (winnerTickets.length > 0) {
+      // Scramble the first ticket ID
+      setCurrentTicketChars(scrambleTicketId(winnerTickets[0]));
+      
+      // Start the reveal process
+      ticketRevealTimerRef.current = setTimeout(() => {
+        processTicketReveal();
+      }, 1000 / machineState.speed);
+    } else {
+      // No tickets to reveal, go back to complete state
+      setMachineState(prev => ({
+        ...prev,
+        status: COMPLETE_STATUS
+      }));
+    }
+  }, [machineState.speed, processTicketReveal, scrambleTicketId, winnerTickets]);
   
   // Initialize and load data
   useEffect(() => {
@@ -201,15 +293,6 @@ export default function DrawMachine({
           }
         }
         
-        // Load characters for reveal animation
-        try {
-          const characterData = await firebaseService.getDrawCharacters(lotteryId);
-          setCharacters(characterData);
-        } catch (err) {
-          console.error('Error loading characters:', err);
-          // Continue even if characters can't be loaded
-        }
-        
         setError(null);
       } catch (err) {
         console.error('Error initializing draw machine:', err);
@@ -223,6 +306,16 @@ export default function DrawMachine({
       unsubscribeDraw = firebaseService.subscribeToDrawSequence(sequenceId, (drawData) => {
         if (drawData) {
           setDrawSequence(drawData);
+          
+          // Extract winner ticket IDs if available
+          if (drawData.winners && drawData.winners.length > 0) {
+            const ticketIds = drawData.winners.map(winner => 
+              typeof winner.ticketId === 'string' ? winner.ticketId : 
+              winner.id || `T${winner.ticketNumber.toString().padStart(5, '0')}`
+            ).filter(id => id);
+            
+            setWinnerTickets(ticketIds);
+          }
           
           // Update machine state based on draw status
           if (drawData.status === 'pending') {
@@ -247,9 +340,9 @@ export default function DrawMachine({
       if (unsubscribeLottery) unsubscribeLottery();
       if (unsubscribeDraw) unsubscribeDraw();
       
-      // Clear any pending character reveal timers
-      if (characterRevealTimerRef.current) {
-        clearTimeout(characterRevealTimerRef.current);
+      // Clear any pending timers
+      if (ticketRevealTimerRef.current) {
+        clearTimeout(ticketRevealTimerRef.current);
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
@@ -265,15 +358,15 @@ export default function DrawMachine({
         onDrawComplete();
       }
       
-      // Start character reveal after the main animation completes
-      if (characters.length > 0 && currentCharacterIndex < 0) {
-        // Add a small delay before starting character reveal
+      // Start ticket ID reveal after the main animation completes
+      if (winnerTickets.length > 0 && currentTicketIndex < 0) {
+        // Add a small delay before starting ticket reveal
         setTimeout(() => {
-          startCharacterReveal();
+          startTicketReveal();
         }, 1500);
       }
     }
-  }, [machineState.status, onDrawComplete, characters, startCharacterReveal, currentCharacterIndex]);
+  }, [machineState.status, onDrawComplete, winnerTickets, startTicketReveal, currentTicketIndex]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -435,28 +528,28 @@ export default function DrawMachine({
         currentStep: 0
       });
       
-      // Reset character reveal
-      setCurrentCharacterIndex(-1);
+      // Reset ticket reveal
+      setCurrentTicketIndex(-1);
       // Clear any pending timers
-      if (characterRevealTimerRef.current) {
-        clearTimeout(characterRevealTimerRef.current);
+      if (ticketRevealTimerRef.current) {
+        clearTimeout(ticketRevealTimerRef.current);
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
       }
-    } else if (machineState.status === CHARACTER_REVEAL_STATUS) {
-      // Resume character reveal
+    } else if (machineState.status === TICKET_REVEAL_STATUS) {
+      // Resume ticket reveal
       if (isPaused) {
         setIsPaused(false);
         resetCountdown();
         
-        if (characterRevealTimerRef.current) {
-          clearTimeout(characterRevealTimerRef.current);
+        if (ticketRevealTimerRef.current) {
+          clearTimeout(ticketRevealTimerRef.current);
         }
         
-        // Resume the character reveal with current countdown
-        characterRevealTimerRef.current = setTimeout(() => {
-          revealNextCharacter();
+        // Resume the ticket reveal with current countdown
+        ticketRevealTimerRef.current = setTimeout(() => {
+          processTicketReveal();
         }, timeUntilNextReveal * 1000 / machineState.speed);
       }
     } else {
@@ -472,10 +565,10 @@ export default function DrawMachine({
   const pauseDraw = () => {
     setIsPaused(true);
     
-    // Also pause character reveal if that's in progress
-    if (machineState.status === CHARACTER_REVEAL_STATUS) {
-      if (characterRevealTimerRef.current) {
-        clearTimeout(characterRevealTimerRef.current);
+    // Also pause ticket reveal if that's in progress
+    if (machineState.status === TICKET_REVEAL_STATUS) {
+      if (ticketRevealTimerRef.current) {
+        clearTimeout(ticketRevealTimerRef.current);
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
@@ -489,10 +582,10 @@ export default function DrawMachine({
       speed
     });
     
-    // If we're in character reveal, restart the timer with new speed
-    if (machineState.status === CHARACTER_REVEAL_STATUS && !isPaused) {
-      if (characterRevealTimerRef.current) {
-        clearTimeout(characterRevealTimerRef.current);
+    // If we're in ticket reveal, restart the timer with new speed
+    if (machineState.status === TICKET_REVEAL_STATUS && !isPaused) {
+      if (ticketRevealTimerRef.current) {
+        clearTimeout(ticketRevealTimerRef.current);
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
@@ -501,22 +594,22 @@ export default function DrawMachine({
       // Restart countdown with new speed
       resetCountdown();
       
-      // Restart character reveal timer with new speed
-      characterRevealTimerRef.current = setTimeout(() => {
-        revealNextCharacter();
+      // Restart ticket reveal timer with new speed
+      ticketRevealTimerRef.current = setTimeout(() => {
+        processTicketReveal();
       }, timeUntilNextReveal * 1000 / speed);
     }
   };
   
-  // Skip to character reveal (debug/testing function)
-  const skipToCharacterReveal = () => {
-    if (characters.length > 0) {
-      // Reset character reveal state
-      setCurrentCharacterIndex(-1);
+  // Skip to ticket reveal (debug/testing function)
+  const skipToTicketReveal = () => {
+    if (winnerTickets.length > 0) {
+      // Reset ticket reveal state
+      setCurrentTicketIndex(-1);
       
       // Clear any pending timers
-      if (characterRevealTimerRef.current) {
-        clearTimeout(characterRevealTimerRef.current);
+      if (ticketRevealTimerRef.current) {
+        clearTimeout(ticketRevealTimerRef.current);
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
@@ -524,11 +617,13 @@ export default function DrawMachine({
       
       setMachineState({
         ...machineState,
-        status: CHARACTER_REVEAL_STATUS
+        status: COMPLETE_STATUS
       });
       
-      // Start character reveal
-      startCharacterReveal();
+      // Start ticket reveal
+      setTimeout(() => {
+        startTicketReveal();
+      }, 500);
     }
   };
   
@@ -560,89 +655,95 @@ export default function DrawMachine({
   const renderDrawContent = () => {
     if (!lottery) return null;
     
-    // If in character reveal mode, show character reveal animation
-    if (machineState.status === CHARACTER_REVEAL_STATUS) {
+    // If in ticket reveal mode, show the ticket reveal animation
+    if (machineState.status === TICKET_REVEAL_STATUS && currentTicketIndex >= 0) {
+      const currentTicket = winnerTickets[currentTicketIndex];
+      
       return (
-        <div className="character-reveal-container bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden p-6" 
-          style={{ height: isPopup ? '350px' : '400px' }}>
-          <h3 className="text-xl font-bold mb-4 text-center">Character Reveal</h3>
+        <div className="ticket-reveal-container bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden p-6" 
+             style={{ height: isPopup ? '350px' : '400px' }}>
+          <h3 className="text-xl font-bold mb-4 text-center">
+            {revealPhase === 'scramble' ? 'Ticket Reveal' : 
+             revealPhase === 'reveal' ? 'Unscrambling Ticket' : 'Winning Ticket Revealed!'}
+          </h3>
           
           {/* Countdown timer */}
-          <div className="countdown-timer flex justify-center items-center gap-2 mb-4">
-            <MdTimer size={24} className="text-prize-gold animate-pulse" />
-            <div className="text-prize-gold font-bold text-lg">
-              Next character in: {timeUntilNextReveal}s
+          {(revealPhase === 'scramble' || revealPhase === 'reveal') && (
+            <div className="countdown-timer flex justify-center items-center gap-2 mb-4">
+              <MdTimer size={24} className="text-prize-gold animate-pulse" />
+              <div className="text-prize-gold font-bold text-lg">
+                {revealPhase === 'scramble' ? 'Unscrambling in: ' : 'Next ticket in: '}
+                {timeUntilNextReveal}s
+              </div>
+            </div>
+          )}
+          
+          {/* Ticket display */}
+          <div className="ticket-display flex justify-center my-8">
+            <div className={`relative p-4 rounded-lg border-4 ${
+              revealPhase === 'complete' ? 'border-prize-gold bg-prize-gold/10' : 'border-secondary bg-neutral-dark/50'
+            }`}>
+              <div className="flex space-x-1">
+                {currentTicketChars.map((charObj, index) => (
+                  <motion.div
+                    key={`${charObj.char}-${charObj.originalIndex}`}
+                    className={`ticket-char w-12 h-16 flex items-center justify-center rounded-md font-bold text-2xl
+                      ${charObj.isRevealed ? 
+                        (revealPhase === 'complete' ? 'bg-prize-gold text-neutral-dark' : 'bg-secondary text-white') : 
+                        'bg-neutral-dark/80 text-transparent'}
+                    `}
+                    initial={false}
+                    animate={{
+                      x: (charObj.currentIndex - index) * 52, // 52px = char width + spacing
+                      opacity: charObj.isRevealed ? 1 : 0.5,
+                      rotateY: charObj.isRevealed ? 0 : 180,
+                      scale: charObj.isRevealed ? 1 : 0.9,
+                    }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 200,
+                      damping: 20,
+                      duration: 0.8
+                    }}
+                  >
+                    {charObj.isRevealed ? charObj.char : '*'}
+                  </motion.div>
+                ))}
+              </div>
+              
+              {revealPhase === 'complete' && (
+                <motion.div 
+                  className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-prize-gold text-neutral-dark px-3 py-1 rounded-full text-sm font-bold"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  Ticket #{currentTicketIndex + 1}
+                </motion.div>
+              )}
             </div>
           </div>
           
-          <div className="characters-grid grid grid-cols-3 gap-4">
-            {characters.map((character, index) => {
-              const isRevealed = index <= currentCharacterIndex;
-              return (
-                <motion.div
-                  key={character.id}
-                  className={`character-card bg-neutral-dark rounded-lg p-4 flex flex-col items-center 
-                    ${isRevealed ? 'revealed' : 'hidden-character'}`}
-                  initial={{ opacity: 0, scale: 0.8, rotateY: -90 }}
-                  animate={isRevealed ? { 
-                    opacity: 1, 
-                    scale: 1, 
-                    rotateY: 0,
-                    transition: { 
-                      duration: 1,
-                      type: 'spring',
-                      stiffness: 300,
-                      damping: 20
-                    }
-                  } : { opacity: 0, scale: 0.8, rotateY: -90 }}
-                >
-                  <div className="character-avatar bg-secondary/20 rounded-full w-16 h-16 flex items-center justify-center mb-2">
-                    {character.imageUrl ? (
-                      <div className="relative w-full h-full rounded-full overflow-hidden">
-                        <Image
-                          src={character.imageUrl}
-                          alt={character.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <MdPerson size={32} className="text-neutral-light" />
-                    )}
-                  </div>
-                  
-                  <div className="character-name font-bold text-center mb-1">
-                    {character.name}
-                  </div>
-                  
-                  {character.description && (
-                    <div className="character-description text-xs text-neutral-light/70 text-center">
-                      {character.description}
-                    </div>
-                  )}
-                  
-                  {isRevealed && (
-                    <div className="character-revealed-indicator bg-prize-gold/20 text-prize-gold text-xs px-2 py-1 rounded-full mt-2">
-                      Revealed!
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-          
-          {/* Character reveal progress indicator */}
-          <div className="character-progress mt-4 flex justify-center">
-            {characters.map((_, index) => (
+          {/* Progress indicator */}
+          <div className="ticket-progress mt-6 flex justify-center">
+            {winnerTickets.map((_, index) => (
               <div 
                 key={index}
                 className={`w-2 h-2 rounded-full mx-1 ${
-                  index <= currentCharacterIndex 
-                    ? 'bg-prize-gold' 
-                    : 'bg-neutral-light/30'
+                  index < currentTicketIndex ? 'bg-prize-gold' : 
+                  index === currentTicketIndex ? (revealPhase === 'complete' ? 'bg-prize-gold' : 'bg-secondary') : 
+                  'bg-neutral-light/30'
                 }`}
               />
             ))}
+          </div>
+          
+          {/* Status message */}
+          <div className="text-center mt-4 text-neutral-light/70">
+            {revealPhase === 'scramble' ? 'Decoding ticket ID...' : 
+             revealPhase === 'reveal' ? 'Rearranging characters to correct sequence...' : 
+             `Ticket ${currentTicket} revealed! ${
+               currentTicketIndex < winnerTickets.length - 1 ? 'Preparing next ticket...' : 'All tickets revealed!'
+             }`}
           </div>
         </div>
       );
@@ -738,7 +839,7 @@ export default function DrawMachine({
              machineState.status === SELECTING_STATUS ? 'Selecting ticket...' :
              machineState.status === REVEALING_STATUS ? 'Revealing winner...' :
              machineState.status === CELEBRATING_STATUS ? 'Celebrating winners!' :
-             machineState.status === CHARACTER_REVEAL_STATUS ? 'Revealing characters...' :
+             machineState.status === TICKET_REVEAL_STATUS ? 'Revealing ticket IDs...' :
              machineState.status === COMPLETE_STATUS ? 'Draw completed' : ''}
           </div>
           
@@ -755,7 +856,7 @@ export default function DrawMachine({
           <div className="control-buttons flex space-x-3">
             {/* Play/Pause Button */}
             {(machineState.status === IDLE_STATUS || machineState.status === COMPLETE_STATUS || 
-              machineState.status === CHARACTER_REVEAL_STATUS || isPaused) ? (
+              machineState.status === TICKET_REVEAL_STATUS || isPaused) ? (
               <button
                 onClick={playDraw}
                 className="control-btn bg-secondary w-10 h-10 rounded-full flex items-center justify-center"
@@ -784,13 +885,13 @@ export default function DrawMachine({
               </button>
             )}
             
-            {/* Character Reveal Button */}
+            {/* Ticket Reveal Button */}
             {machineState.status === COMPLETE_STATUS && (
               <button
-                onClick={skipToCharacterReveal}
+                onClick={skipToTicketReveal}
                 className="control-btn bg-prize-gold/20 text-prize-gold text-xs px-3 py-1 rounded-full"
               >
-                Show Characters
+                Show Tickets
               </button>
             )}
           </div>
@@ -811,8 +912,8 @@ export default function DrawMachine({
           
           {/* Draw Progress */}
           <div className="draw-progress text-sm text-neutral-light/70">
-            {machineState.status === CHARACTER_REVEAL_STATUS 
-              ? `Character ${currentCharacterIndex + 1} of ${characters.length}` 
+            {machineState.status === TICKET_REVEAL_STATUS 
+              ? `Ticket ${currentTicketIndex + 1} of ${winnerTickets.length}` 
               : drawSequence 
                 ? `Step ${machineState.currentStep + 1} of ${drawSequence.steps.length}` 
                 : ''}
@@ -839,7 +940,7 @@ export default function DrawMachine({
           border-radius: 50%;
           display: flex;
           align-items: center;
-          justify-content: center;
+          justify-center;
           font-weight: bold;
           box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
           transform-style: preserve-3d;
@@ -886,16 +987,6 @@ export default function DrawMachine({
         
         .draw-machine.in-popup .draw-machine-container {
           height: 350px;
-        }
-        
-        .hidden-character {
-          filter: blur(5px);
-          opacity: 0.3;
-        }
-        
-        .character-card {
-          perspective: 1000px;
-          transform-style: preserve-3d;
         }
         
         .countdown-timer {
