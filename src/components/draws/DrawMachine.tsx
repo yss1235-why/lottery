@@ -20,7 +20,7 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdTimer } from 'react-icons/md';
+import { MdLocalPlay, MdTimer } from 'react-icons/md';
 import Image from 'next/image';
 
 interface DrawMachineProps {
@@ -59,13 +59,12 @@ export default function DrawMachine({
   const [machineState, setMachineState] = useState({
     status: IDLE_STATUS,
     currentStep: -1,
-    speed: 1
+    speed: 1 // Default speed set to 1x
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
   
   // Ticket ID reveal states
   const [winnerTickets, setWinnerTickets] = useState<string[]>([]);
@@ -139,8 +138,8 @@ export default function DrawMachine({
         }
         return prev - 1;
       });
-    }, 1000 / machineState.speed);
-  }, [machineState.speed]);
+    }, 1000);
+  }, []);
   
   // Function to manage the ticket ID reveal animation phases
   const processTicketReveal = useCallback(() => {
@@ -166,7 +165,7 @@ export default function DrawMachine({
       resetCountdown();
       ticketRevealTimerRef.current = setTimeout(() => {
         processTicketReveal();
-      }, 5000 / machineState.speed);
+      }, 5000);
     } 
     else if (revealPhase === 'reveal') {
       // Move characters back to their original positions
@@ -198,7 +197,7 @@ export default function DrawMachine({
           // Continue the process
           ticketRevealTimerRef.current = setTimeout(() => {
             processTicketReveal();
-          }, 1000 / machineState.speed);
+          }, 1000);
         } else {
           // All tickets revealed
           setMachineState(prev => ({
@@ -211,9 +210,9 @@ export default function DrawMachine({
             clearInterval(countdownTimerRef.current);
           }
         }
-      }, 5000 / machineState.speed);
+      }, 5000);
     }
-  }, [currentTicketIndex, machineState.speed, resetCountdown, revealPhase, scrambleTicketId, winnerTickets]);
+  }, [currentTicketIndex, resetCountdown, revealPhase, scrambleTicketId, winnerTickets]);
   
   // Start the ticket ID reveal process
   const startTicketReveal = useCallback(() => {
@@ -243,7 +242,7 @@ export default function DrawMachine({
       // Start the reveal process
       ticketRevealTimerRef.current = setTimeout(() => {
         processTicketReveal();
-      }, 1000 / machineState.speed);
+      }, 1000);
     } else {
       // No tickets to reveal, go back to complete state
       setMachineState(prev => ({
@@ -251,7 +250,7 @@ export default function DrawMachine({
         status: COMPLETE_STATUS
       }));
     }
-  }, [machineState.speed, processTicketReveal, scrambleTicketId, winnerTickets]);
+  }, [processTicketReveal, scrambleTicketId, winnerTickets]);
   
   // Initialize and load data
   useEffect(() => {
@@ -387,7 +386,7 @@ export default function DrawMachine({
   
   // Handle draw step execution
   useEffect(() => {
-    if (!drawSequence || !ticketsContainerRef.current || isPaused) return;
+    if (!drawSequence || !ticketsContainerRef.current) return;
     
     // Skip if status is not idle
     if (machineState.status !== IDLE_STATUS) return;
@@ -405,7 +404,7 @@ export default function DrawMachine({
           const shuffledTickets = await shuffleTicketsAnimation(
             tickets, 
             containerElement, 
-            (currentStep.duration || 2) / machineState.speed
+            (currentStep.duration || 2)
           );
           setTickets(shuffledTickets);
           
@@ -418,7 +417,7 @@ export default function DrawMachine({
                 currentStep: currentStepIndex + 1
               }));
             }
-          }, 1500 / machineState.speed); // 1.5 second delay adjusted by speed
+          }, 1500); // 1.5 second delay
           break;
           
         case 'select':
@@ -443,7 +442,7 @@ export default function DrawMachine({
                     currentStep: currentStepIndex + 1
                   }));
                 }
-              }, 2500 / machineState.speed); // 2.5 second delay adjusted by speed
+              }, 2500); // 2.5 second delay
             });
           }
           break;
@@ -488,7 +487,7 @@ export default function DrawMachine({
                         currentStep: currentStepIndex + 1
                       }));
                     }
-                  }, 4000 / machineState.speed); // 4 second delay adjusted by speed
+                  }, 4000); // 4 second delay
                 });
               }
             }
@@ -509,123 +508,14 @@ export default function DrawMachine({
               ...prevState,
               status: COMPLETE_STATUS
             }));
-          }, 7000 / machineState.speed); // 7 second celebration delay adjusted by speed
+          }, 7000); // 7 second celebration delay
           break;
       }
     };
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets, isPaused, onDrawComplete]);
-  
-  // User control functions
-  const playDraw = () => {
-    if (machineState.status === COMPLETE_STATUS) {
-      // Restart from beginning
-      setMachineState({
-        ...machineState,
-        status: IDLE_STATUS,
-        currentStep: 0
-      });
-      
-      // Reset ticket reveal
-      setCurrentTicketIndex(-1);
-      // Clear any pending timers
-      if (ticketRevealTimerRef.current) {
-        clearTimeout(ticketRevealTimerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-    } else if (machineState.status === TICKET_REVEAL_STATUS) {
-      // Resume ticket reveal
-      if (isPaused) {
-        setIsPaused(false);
-        resetCountdown();
-        
-        if (ticketRevealTimerRef.current) {
-          clearTimeout(ticketRevealTimerRef.current);
-        }
-        
-        // Resume the ticket reveal with current countdown
-        ticketRevealTimerRef.current = setTimeout(() => {
-          processTicketReveal();
-        }, timeUntilNextReveal * 1000 / machineState.speed);
-      }
-    } else {
-      // Resume from current step
-      setIsPaused(false);
-      setMachineState({
-        ...machineState,
-        status: IDLE_STATUS
-      });
-    }
-  };
-  
-  const pauseDraw = () => {
-    setIsPaused(true);
-    
-    // Also pause ticket reveal if that's in progress
-    if (machineState.status === TICKET_REVEAL_STATUS) {
-      if (ticketRevealTimerRef.current) {
-        clearTimeout(ticketRevealTimerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-    }
-  };
-  
-  const changeSpeed = (speed: number) => {
-    setMachineState({
-      ...machineState,
-      speed
-    });
-    
-    // If we're in ticket reveal, restart the timer with new speed
-    if (machineState.status === TICKET_REVEAL_STATUS && !isPaused) {
-      if (ticketRevealTimerRef.current) {
-        clearTimeout(ticketRevealTimerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-      
-      // Restart countdown with new speed
-      resetCountdown();
-      
-      // Restart ticket reveal timer with new speed
-      ticketRevealTimerRef.current = setTimeout(() => {
-        processTicketReveal();
-      }, timeUntilNextReveal * 1000 / speed);
-    }
-  };
-  
-  // Skip to ticket reveal (debug/testing function)
-  const skipToTicketReveal = () => {
-    if (winnerTickets.length > 0) {
-      // Reset ticket reveal state
-      setCurrentTicketIndex(-1);
-      
-      // Clear any pending timers
-      if (ticketRevealTimerRef.current) {
-        clearTimeout(ticketRevealTimerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-      
-      setMachineState({
-        ...machineState,
-        status: COMPLETE_STATUS
-      });
-      
-      // Start ticket reveal
-      setTimeout(() => {
-        startTicketReveal();
-      }, 500);
-    }
-  };
+  }, [drawSequence, machineState, tickets, onDrawComplete]);
   
   // Loading and error states
   if (loading) {
@@ -849,75 +739,6 @@ export default function DrawMachine({
               <Confetti />
             </div>
           )}
-        </div>
-        
-        {/* Draw Controls - Basic user controls only */}
-        <div className="draw-controls mt-4 flex justify-between items-center bg-neutral-dark/50 p-3 rounded-lg">
-          <div className="control-buttons flex space-x-3">
-            {/* Play/Pause Button */}
-            {(machineState.status === IDLE_STATUS || machineState.status === COMPLETE_STATUS || 
-              machineState.status === TICKET_REVEAL_STATUS || isPaused) ? (
-              <button
-                onClick={playDraw}
-                className="control-btn bg-secondary w-10 h-10 rounded-full flex items-center justify-center"
-                aria-label="Play"
-              >
-                <MdPlayArrow size={24} />
-              </button>
-            ) : (
-              <button
-                onClick={pauseDraw}
-                className="control-btn bg-neutral-light/20 w-10 h-10 rounded-full flex items-center justify-center"
-                aria-label="Pause"
-              >
-                <MdPause size={24} />
-              </button>
-            )}
-            
-            {/* Replay Button */}
-            {machineState.status === COMPLETE_STATUS && (
-              <button
-                onClick={() => setMachineState({...machineState, status: IDLE_STATUS, currentStep: 0})}
-                className="control-btn bg-neutral-light/20 w-10 h-10 rounded-full flex items-center justify-center"
-                aria-label="Replay"
-              >
-                <MdReplay size={20} />
-              </button>
-            )}
-            
-            {/* Ticket Reveal Button */}
-            {machineState.status === COMPLETE_STATUS && (
-              <button
-                onClick={skipToTicketReveal}
-                className="control-btn bg-prize-gold/20 text-prize-gold text-xs px-3 py-1 rounded-full"
-              >
-                Show Tickets
-              </button>
-            )}
-          </div>
-          
-          {/* Speed Control */}
-          <div className="speed-control flex items-center space-x-2">
-            <span className="text-sm text-neutral-light/70">Speed:</span>
-            <select
-              value={machineState.speed}
-              onChange={(e) => changeSpeed(Number(e.target.value))}
-              className="bg-neutral-dark px-2 py-1 rounded text-sm"
-            >
-              <option value="0.5">0.5x</option>
-              <option value="1">1x</option>
-              <option value="2">2x</option>
-            </select>
-          </div>
-          
-          {/* Draw Progress */}
-          <div className="draw-progress text-sm text-neutral-light/70">
-            {machineState.status === TICKET_REVEAL_STATUS 
-              ? `Ticket ${currentTicketIndex + 1} of ${winnerTickets.length}` 
-              : drawSequence 
-                ? `Step ${machineState.currentStep + 1} of ${drawSequence.steps.length}` 
-                : ''}
-          </div>
         </div>
       </>
     );
