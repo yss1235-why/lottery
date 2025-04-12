@@ -7,7 +7,8 @@ import { firebaseService } from '@/services/firebase-service';
 import { 
   DrawSequence, 
   DrawWinner, 
-  AnimatedTicket
+  AnimatedTicket,
+  Character
 } from '@/types/draw-sequence';
 import { Lottery } from '@/types/lottery';
 import { 
@@ -20,7 +21,8 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay } from 'react-icons/md';
+import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdPerson } from 'react-icons/md';
+import Image from 'next/image';
 
 interface DrawMachineProps {
   lotteryId: string;
@@ -36,6 +38,7 @@ const SELECTING_STATUS = 'selecting';
 const REVEALING_STATUS = 'revealing';
 const CELEBRATING_STATUS = 'celebrating';
 const COMPLETE_STATUS = 'complete';
+const CHARACTER_REVEAL_STATUS = 'character-reveal';
 
 export default function DrawMachine({ 
   lotteryId, 
@@ -56,6 +59,12 @@ export default function DrawMachine({
   const [showConfetti, setShowConfetti] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  
+  // New states for character reveal
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [revealedCharacters, setRevealedCharacters] = useState<Character[]>([]);
+  const [currentCharacterIndex, setCurrentCharacterIndex] = useState(-1);
+  const characterRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketsContainerRef = useRef<HTMLDivElement>(null);
@@ -100,6 +109,15 @@ export default function DrawMachine({
           }
         }
         
+        // Load characters for reveal animation
+        try {
+          const characterData = await firebaseService.getDrawCharacters(lotteryId);
+          setCharacters(characterData);
+        } catch (err) {
+          console.error('Error loading characters:', err);
+          // Continue even if characters can't be loaded
+        }
+        
         setError(null);
       } catch (err) {
         console.error('Error initializing draw machine:', err);
@@ -136,6 +154,11 @@ export default function DrawMachine({
     return () => {
       if (unsubscribeLottery) unsubscribeLottery();
       if (unsubscribeDraw) unsubscribeDraw();
+      
+      // Clear any pending character reveal timers
+      if (characterRevealTimerRef.current) {
+        clearTimeout(characterRevealTimerRef.current);
+      }
     };
   }, [lotteryId, drawId, machineState]);
   
@@ -147,13 +170,12 @@ export default function DrawMachine({
         onDrawComplete();
       }
       
-      // If there's a winner, we can optionally send a notification here
-      if (drawSequence && drawSequence.winners && drawSequence.winners.length > 0) {
-        // This would typically be handled by the global notification system
-        // But we could emit an event or call a notification function here
+      // Start character reveal after the main animation completes
+      if (characters.length > 0) {
+        startCharacterReveal();
       }
     }
-  }, [machineState.status, onDrawComplete, drawSequence]);
+  }, [machineState.status, onDrawComplete, characters]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -296,11 +318,6 @@ export default function DrawMachine({
               ...machineState,
               status: COMPLETE_STATUS
             });
-            
-            // Call the onDrawComplete callback if provided
-            if (onDrawComplete) {
-              onDrawComplete();
-            }
           }, 7000 / machineState.speed); // 7 second celebration delay adjusted by speed
           break;
       }
@@ -309,6 +326,53 @@ export default function DrawMachine({
     // Execute the current step
     executeStep();
   }, [drawSequence, machineState, tickets, isPaused, onDrawComplete]);
+  
+  // Character reveal function
+  const startCharacterReveal = () => {
+    // Reset character reveal state
+    setRevealedCharacters([]);
+    setCurrentCharacterIndex(-1);
+    
+    // Start the character reveal sequence
+    setMachineState({
+      ...machineState,
+      status: CHARACTER_REVEAL_STATUS
+    });
+    
+    // Reveal the first character
+    revealNextCharacter();
+  };
+  
+  // Function to reveal the next character in sequence
+  const revealNextCharacter = () => {
+    // Clear any existing timers
+    if (characterRevealTimerRef.current) {
+      clearTimeout(characterRevealTimerRef.current);
+    }
+    
+    const nextIndex = currentCharacterIndex + 1;
+    
+    // Check if we've revealed all characters
+    if (nextIndex >= characters.length) {
+      // All characters revealed, return to complete state
+      setMachineState({
+        ...machineState,
+        status: COMPLETE_STATUS
+      });
+      return;
+    }
+    
+    // Set the current character index
+    setCurrentCharacterIndex(nextIndex);
+    
+    // Add the character to revealed characters list with animation
+    setRevealedCharacters(prev => [...prev, characters[nextIndex]]);
+    
+    // Schedule the next character reveal after 5 seconds
+    characterRevealTimerRef.current = setTimeout(() => {
+      revealNextCharacter();
+    }, 5000 / machineState.speed); // 5 second delay adjusted by speed
+  };
   
   // User control functions
   const playDraw = () => {
@@ -319,6 +383,16 @@ export default function DrawMachine({
         status: IDLE_STATUS,
         currentStep: 0
       });
+      
+      // Reset character reveal
+      setRevealedCharacters([]);
+      setCurrentCharacterIndex(-1);
+    } else if (machineState.status === CHARACTER_REVEAL_STATUS) {
+      // Resume character reveal
+      if (characterRevealTimerRef.current) {
+        clearTimeout(characterRevealTimerRef.current);
+      }
+      revealNextCharacter();
     } else {
       // Resume from current step
       setIsPaused(false);
@@ -331,6 +405,11 @@ export default function DrawMachine({
   
   const pauseDraw = () => {
     setIsPaused(true);
+    
+    // Also pause character reveal if that's in progress
+    if (machineState.status === CHARACTER_REVEAL_STATUS && characterRevealTimerRef.current) {
+      clearTimeout(characterRevealTimerRef.current);
+    }
   };
   
   const changeSpeed = (speed: number) => {
@@ -338,6 +417,32 @@ export default function DrawMachine({
       ...machineState,
       speed
     });
+    
+    // If we're in character reveal, restart the timer with new speed
+    if (machineState.status === CHARACTER_REVEAL_STATUS) {
+      if (characterRevealTimerRef.current) {
+        clearTimeout(characterRevealTimerRef.current);
+      }
+      
+      characterRevealTimerRef.current = setTimeout(() => {
+        revealNextCharacter();
+      }, 5000 / speed);
+    }
+  };
+  
+  // Skip to character reveal (debug/testing function)
+  const skipToCharacterReveal = () => {
+    if (characters.length > 0) {
+      setMachineState({
+        ...machineState,
+        status: CHARACTER_REVEAL_STATUS
+      });
+      
+      // Reset and start character reveal
+      setRevealedCharacters([]);
+      setCurrentCharacterIndex(-1);
+      revealNextCharacter();
+    }
   };
   
   // Loading and error states
@@ -367,6 +472,86 @@ export default function DrawMachine({
   // Determine what content to display based on draw status
   const renderDrawContent = () => {
     if (!lottery) return null;
+    
+    // If in character reveal mode, show character reveal animation
+    if (machineState.status === CHARACTER_REVEAL_STATUS) {
+      return (
+        <div className="character-reveal-container bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden p-6" 
+          style={{ height: isPopup ? '350px' : '400px' }}>
+          <h3 className="text-xl font-bold mb-6 text-center">Character Reveal</h3>
+          
+          <div className="characters-grid grid grid-cols-3 gap-4">
+            {characters.map((character, index) => {
+              const isRevealed = index <= currentCharacterIndex;
+              return (
+                <motion.div
+                  key={character.id}
+                  className={`character-card bg-neutral-dark rounded-lg p-4 flex flex-col items-center 
+                    ${isRevealed ? 'revealed' : 'hidden-character'}`}
+                  initial={{ opacity: 0, scale: 0.8, rotateY: -90 }}
+                  animate={isRevealed ? { 
+                    opacity: 1, 
+                    scale: 1, 
+                    rotateY: 0,
+                    transition: { 
+                      duration: 1,
+                      type: 'spring',
+                      stiffness: 300,
+                      damping: 20
+                    }
+                  } : { opacity: 0, scale: 0.8, rotateY: -90 }}
+                >
+                  <div className="character-avatar bg-secondary/20 rounded-full w-16 h-16 flex items-center justify-center mb-2">
+                    {character.imageUrl ? (
+                      <div className="relative w-full h-full rounded-full overflow-hidden">
+                        <Image
+                          src={character.imageUrl}
+                          alt={character.name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <MdPerson size={32} className="text-neutral-light" />
+                    )}
+                  </div>
+                  
+                  <div className="character-name font-bold text-center mb-1">
+                    {character.name}
+                  </div>
+                  
+                  {character.description && (
+                    <div className="character-description text-xs text-neutral-light/70 text-center">
+                      {character.description}
+                    </div>
+                  )}
+                  
+                  {isRevealed && (
+                    <div className="character-revealed-indicator bg-prize-gold/20 text-prize-gold text-xs px-2 py-1 rounded-full mt-2">
+                      Revealed!
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+          
+          {/* Character reveal progress indicator */}
+          <div className="character-progress mt-4 flex justify-center">
+            {characters.map((_, index) => (
+              <div 
+                key={index}
+                className={`w-2 h-2 rounded-full mx-1 ${
+                  index <= currentCharacterIndex 
+                    ? 'bg-prize-gold' 
+                    : 'bg-neutral-light/30'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
     
     // If draw hasn't started or no sequence exists, show a basic animation
     if (!drawSequence) {
@@ -458,6 +643,7 @@ export default function DrawMachine({
              machineState.status === SELECTING_STATUS ? 'Selecting ticket...' :
              machineState.status === REVEALING_STATUS ? 'Revealing winner...' :
              machineState.status === CELEBRATING_STATUS ? 'Celebrating winners!' :
+             machineState.status === CHARACTER_REVEAL_STATUS ? 'Revealing characters...' :
              machineState.status === COMPLETE_STATUS ? 'Draw completed' : ''}
           </div>
           
@@ -473,7 +659,8 @@ export default function DrawMachine({
         <div className="draw-controls mt-4 flex justify-between items-center bg-neutral-dark/50 p-3 rounded-lg">
           <div className="control-buttons flex space-x-3">
             {/* Play/Pause Button */}
-            {(machineState.status === IDLE_STATUS || machineState.status === COMPLETE_STATUS || isPaused) ? (
+            {(machineState.status === IDLE_STATUS || machineState.status === COMPLETE_STATUS || 
+              machineState.status === CHARACTER_REVEAL_STATUS || isPaused) ? (
               <button
                 onClick={playDraw}
                 className="control-btn bg-secondary w-10 h-10 rounded-full flex items-center justify-center"
@@ -501,6 +688,16 @@ export default function DrawMachine({
                 <MdReplay size={20} />
               </button>
             )}
+            
+            {/* Character Reveal Button (in development mode) */}
+            {process.env.NODE_ENV === 'development' && machineState.status === COMPLETE_STATUS && (
+              <button
+                onClick={skipToCharacterReveal}
+                className="control-btn bg-prize-gold/20 text-prize-gold text-xs px-3 py-1 rounded-full"
+              >
+                Show Characters
+              </button>
+            )}
           </div>
           
           {/* Speed Control */}
@@ -519,7 +716,11 @@ export default function DrawMachine({
           
           {/* Draw Progress */}
           <div className="draw-progress text-sm text-neutral-light/70">
-            {drawSequence ? `Step ${machineState.currentStep + 1} of ${drawSequence.steps.length}` : ''}
+            {machineState.status === CHARACTER_REVEAL_STATUS 
+              ? `Character ${currentCharacterIndex + 1} of ${characters.length}` 
+              : drawSequence 
+                ? `Step ${machineState.currentStep + 1} of ${drawSequence.steps.length}` 
+                : ''}
           </div>
         </div>
       </>
@@ -590,6 +791,16 @@ export default function DrawMachine({
         
         .draw-machine.in-popup .draw-machine-container {
           height: 350px;
+        }
+        
+        .hidden-character {
+          filter: blur(5px);
+          opacity: 0.3;
+        }
+        
+        .character-card {
+          perspective: 1000px;
+          transform-style: preserve-3d;
         }
       `}</style>
     </div>
