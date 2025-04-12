@@ -19,10 +19,9 @@ import {
 } from '@/lib/draw-animations';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
+import DrawPreparationAnimation from '@/components/draws/DrawPreparationAnimation';
 import { formatCurrency } from '@/lib/formatters';
 import { MdLocalPlay, MdTimer } from 'react-icons/md';
-// Only import Image if we're using it
-// import Image from 'next/image';
 
 interface DrawMachineProps {
   lotteryId: string;
@@ -283,7 +282,7 @@ export default function DrawMachine({
     ticketRevealTimerRef.current = setTimeout(() => {
       processTicketReveal();
     }, 1000);
-  }, [processTicketReveal, scrambleTicketId, winnerTickets, drawSequence, completionCallbackFired]);
+  }, [processTicketReveal, scrambleTicketId, winnerTickets, drawSequence]);
   
   // Initialize and load data
   useEffect(() => {
@@ -814,19 +813,8 @@ export default function DrawMachine({
       );
     }
     
-    // Default state when no draw sequence exists yet - simple "Draw in Progress" animation
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-12">
-        <div className="animate-spin mb-4">
-          <MdLocalPlay size={48} className="text-prize-gold" />
-        </div>
-        <h3 className="text-xl font-bold mb-4">Draw in Progress</h3>
-        <p className="text-neutral-light/70 max-w-md text-center">
-          The draw for this lottery is currently being prepared.
-          Please wait while we set up the drawing process.
-        </p>
-      </div>
-    );
+    // Default state when no draw sequence exists yet - ENHANCED with new animation component
+    return <DrawPreparationAnimation ticketCount={lottery.ticketCapacity || 30} />;
   };
 
   return (
