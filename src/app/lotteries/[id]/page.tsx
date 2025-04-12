@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { firebaseService } from '@/services/firebase-service';
@@ -20,7 +20,6 @@ import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, M
 
 export default function LotteryDetailPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const { id } = useParams();
   // Convert id to string and provide a default value if it's undefined
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
