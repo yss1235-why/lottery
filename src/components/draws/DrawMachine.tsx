@@ -67,6 +67,7 @@ export default function DrawMachine({
   const [showConfetti, setShowConfetti] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
   const [showWinners, setShowWinners] = useState(false);
+  const [completionCallbackFired, setCompletionCallbackFired] = useState(false);
   
   // Ticket ID reveal states
   const [winnerTickets, setWinnerTickets] = useState<string[]>([]);
@@ -218,10 +219,11 @@ export default function DrawMachine({
             clearInterval(countdownTimerRef.current);
           }
           
-          // Notify parent component that animation is complete
-          if (onDrawComplete) {
+          // Notify parent component that animation is complete - but only once
+          if (onDrawComplete && !completionCallbackFired) {
             console.log("Calling onDrawComplete callback");
             onDrawComplete();
+            setCompletionCallbackFired(true);
           }
         }
       }, 5000);
@@ -232,12 +234,18 @@ export default function DrawMachine({
   const startTicketReveal = useCallback(() => {
     console.log("Starting ticket reveal animation");
     
+    // Safety check: Only proceed if we have draw data
+    if (!drawSequence) {
+      console.log("Cannot start ticket reveal - no draw sequence data available");
+      return;
+    }
+    
     // Create sample tickets if none found (for testing)
     if (winnerTickets.length === 0) {
       console.log("No winner tickets found - using sample data");
       
       // Check if there are winners with ticketNumber but no ID
-      const sampleTickets = drawSequence?.winners?.map((winner) => 
+      const sampleTickets = drawSequence.winners?.map((winner) => 
         `T${winner.ticketNumber.toString().padStart(5, '0')}`
       ) || ['RRN328', 'ABC123'];
       
@@ -389,13 +397,18 @@ export default function DrawMachine({
   
   // This effect is the only place that responds to 'completed' status
   useEffect(() => {
-    if (lottery?.status === 'completed' && machineState.status !== TICKET_REVEAL_STATUS && !showWinners) {
+    if (lottery?.status === 'completed' && 
+        machineState.status !== TICKET_REVEAL_STATUS && 
+        !showWinners && 
+        drawSequence && 
+        !loading && 
+        !completionCallbackFired) {
       console.log("Lottery status is 'completed' - starting ticket reveal animation");
       setTimeout(() => {
         startTicketReveal();
       }, 500);
     }
-  }, [lottery?.status, machineState.status, startTicketReveal, showWinners]);
+  }, [lottery?.status, machineState.status, startTicketReveal, showWinners, drawSequence, loading, completionCallbackFired]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -539,10 +552,11 @@ export default function DrawMachine({
               status: COMPLETE_STATUS
             }));
             
-            // Notify parent component that animation is complete
-            if (onDrawComplete) {
+            // Notify parent component that animation is complete - but only once
+            if (onDrawComplete && !completionCallbackFired) {
               console.log("Calling onDrawComplete callback after celebration");
               onDrawComplete();
+              setCompletionCallbackFired(true);
             }
           }, 7000); // 7 second celebration delay
           break;
@@ -710,7 +724,22 @@ export default function DrawMachine({
       );
     }
     
-    // If draw hasn't started or no sequence exists, show a basic animation
+    // Special state: If lottery is completed but draw data is still loading
+    if (!drawSequence && lottery.status === 'completed') {
+      return (
+        <div className="flex flex-col items-center justify-center h-full py-12">
+          <div className="animate-spin mb-4">
+            <MdLocalPlay size={48} className="text-prize-gold" />
+          </div>
+          <h3 className="text-xl font-bold mb-4">Preparing Results</h3>
+          <p className="text-neutral-light/70 max-w-md text-center">
+            The draw has been completed. We're preparing to show you the winners...
+          </p>
+        </div>
+      );
+    }
+    
+    // Regular loading state - if draw hasn't started or no sequence exists
     if (!drawSequence) {
       return (
         <div className="flex flex-col items-center justify-center h-full py-12">
