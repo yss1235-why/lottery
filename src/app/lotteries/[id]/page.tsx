@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
@@ -20,6 +20,7 @@ import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, M
 
 export default function LotteryDetailPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const { id } = useParams();
   // Convert id to string and provide a default value if it's undefined
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
@@ -31,11 +32,24 @@ export default function LotteryDetailPage() {
   const [hostName, setHostName] = useState<string>('');
   const [showDrawNotification, setShowDrawNotification] = useState(false);
   const [showDrawPopup, setShowDrawPopup] = useState(false);
-  const [isDrawPopupDismissed, setIsDrawPopupDismissed] = useState(false);
   
   // Track lottery status changes
   const prevStatusRef = useRef<string | undefined>(lottery?.status);
   const drawPopupTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Add listener for navigation events to reset popup visibility
+  useEffect(() => {
+    // Listen for route changes to reset popup state
+    const handleRouteChange = () => {
+      setShowDrawPopup(false);
+    };
+
+    window.addEventListener('popstate', handleRouteChange);
+    
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
   
   useEffect(() => {
     let isMounted = true;
@@ -80,13 +94,17 @@ export default function LotteryDetailPage() {
             if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
               // Auto-show the draw popup when lottery status changes to drawing
               setShowDrawPopup(true);
-              setIsDrawPopupDismissed(false);
               
               // If there's an auto-close timer active, clear it
               if (drawPopupTimerRef.current) {
                 clearTimeout(drawPopupTimerRef.current);
                 drawPopupTimerRef.current = null;
               }
+            }
+            
+            // Always show the draw popup when lottery is in drawing state
+            if (lotteryData.status === 'drawing') {
+              setShowDrawPopup(true);
             }
             
             // Update previous status ref
@@ -469,19 +487,19 @@ export default function LotteryDetailPage() {
         )}
       </div>
       
-      {/* Draw Popup Modal - Enhanced version */}
-      {(showDrawPopup || (lottery?.status === 'drawing' && !isDrawPopupDismissed)) && drawSequence && (
+      {/* Draw Popup Modal - Always visible when lottery status is drawing */}
+      {showDrawPopup && lottery?.status === 'drawing' && (
         <div className="fixed inset-0 bg-neutral-dark/90 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
             <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
               <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
               <button 
                 onClick={() => {
-                  setShowDrawPopup(false);
-                  setIsDrawPopupDismissed(true);
+                  // Close the popup but navigate away to ensure it doesn't reopen
+                  router.push('/');
                 }}
                 className="text-neutral-light/70 hover:text-white"
-                aria-label="Close"
+                aria-label="Close and go home"
               >
                 <MdClose size={24} />
               </button>
@@ -490,25 +508,11 @@ export default function LotteryDetailPage() {
             <div className="p-4">
               <DrawMachine 
                 lotteryId={lotteryId} 
-                drawId={drawSequence.id} 
+                drawId={lottery.drawId} 
                 isPopup={true}
                 onDrawComplete={() => {
-                  // For multi-prize draws, we need a longer delay
-                  const prizeCount = lottery.prizes?.length || 1;
-                  const baseDelay = 5000; // 5 seconds base
-                  const additionalDelayPerPrize = 3000; // 3 seconds per prize
-                  const totalDelay = baseDelay + (prizeCount * additionalDelayPerPrize);
-                  
-                  // Set a timer to close the popup after delay
-                  if (drawPopupTimerRef.current) {
-                    clearTimeout(drawPopupTimerRef.current);
-                  }
-                  
-                  drawPopupTimerRef.current = setTimeout(() => {
-                    setShowDrawPopup(false);
-                    setIsDrawPopupDismissed(true);
-                    drawPopupTimerRef.current = null;
-                  }, totalDelay);
+                  // Draw is complete but we'll keep the popup open
+                  // until user navigates away
                 }}
               />
             </div>
