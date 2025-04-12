@@ -1,7 +1,7 @@
 // File path: src/components/draws/DrawMachine.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { firebaseService } from '@/services/firebase-service';
 import { 
@@ -62,12 +62,54 @@ export default function DrawMachine({
   
   // New states for character reveal
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [revealedCharacters, setRevealedCharacters] = useState<Character[]>([]);
   const [currentCharacterIndex, setCurrentCharacterIndex] = useState(-1);
   const characterRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketsContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Character reveal function - wrapped in useCallback to avoid dependency issues
+  const startCharacterReveal = useCallback(() => {
+    // Reset character reveal state
+    setCurrentCharacterIndex(-1);
+    
+    // Start the character reveal sequence
+    setMachineState({
+      ...machineState,
+      status: CHARACTER_REVEAL_STATUS
+    });
+    
+    // Reveal the first character
+    revealNextCharacter();
+  }, [machineState]);
+  
+  // Function to reveal the next character in sequence - also wrapped in useCallback
+  const revealNextCharacter = useCallback(() => {
+    // Clear any existing timers
+    if (characterRevealTimerRef.current) {
+      clearTimeout(characterRevealTimerRef.current);
+    }
+    
+    const nextIndex = currentCharacterIndex + 1;
+    
+    // Check if we've revealed all characters
+    if (nextIndex >= characters.length) {
+      // All characters revealed, return to complete state
+      setMachineState({
+        ...machineState,
+        status: COMPLETE_STATUS
+      });
+      return;
+    }
+    
+    // Set the current character index
+    setCurrentCharacterIndex(nextIndex);
+    
+    // Schedule the next character reveal after 5 seconds
+    characterRevealTimerRef.current = setTimeout(() => {
+      revealNextCharacter();
+    }, 5000 / machineState.speed); // 5 second delay adjusted by speed
+  }, [characters.length, currentCharacterIndex, machineState]);
   
   // Initialize and load data
   useEffect(() => {
@@ -175,7 +217,7 @@ export default function DrawMachine({
         startCharacterReveal();
       }
     }
-  }, [machineState.status, onDrawComplete, characters]);
+  }, [machineState.status, onDrawComplete, characters, startCharacterReveal]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -325,54 +367,7 @@ export default function DrawMachine({
     
     // Execute the current step
     executeStep();
-  }, [drawSequence, machineState, tickets, isPaused, onDrawComplete]);
-  
-  // Character reveal function
-  const startCharacterReveal = () => {
-    // Reset character reveal state
-    setRevealedCharacters([]);
-    setCurrentCharacterIndex(-1);
-    
-    // Start the character reveal sequence
-    setMachineState({
-      ...machineState,
-      status: CHARACTER_REVEAL_STATUS
-    });
-    
-    // Reveal the first character
-    revealNextCharacter();
-  };
-  
-  // Function to reveal the next character in sequence
-  const revealNextCharacter = () => {
-    // Clear any existing timers
-    if (characterRevealTimerRef.current) {
-      clearTimeout(characterRevealTimerRef.current);
-    }
-    
-    const nextIndex = currentCharacterIndex + 1;
-    
-    // Check if we've revealed all characters
-    if (nextIndex >= characters.length) {
-      // All characters revealed, return to complete state
-      setMachineState({
-        ...machineState,
-        status: COMPLETE_STATUS
-      });
-      return;
-    }
-    
-    // Set the current character index
-    setCurrentCharacterIndex(nextIndex);
-    
-    // Add the character to revealed characters list with animation
-    setRevealedCharacters(prev => [...prev, characters[nextIndex]]);
-    
-    // Schedule the next character reveal after 5 seconds
-    characterRevealTimerRef.current = setTimeout(() => {
-      revealNextCharacter();
-    }, 5000 / machineState.speed); // 5 second delay adjusted by speed
-  };
+  }, [drawSequence, machineState, tickets, isPaused, onDrawComplete, revealNextCharacter]);
   
   // User control functions
   const playDraw = () => {
@@ -385,7 +380,6 @@ export default function DrawMachine({
       });
       
       // Reset character reveal
-      setRevealedCharacters([]);
       setCurrentCharacterIndex(-1);
     } else if (machineState.status === CHARACTER_REVEAL_STATUS) {
       // Resume character reveal
@@ -439,7 +433,6 @@ export default function DrawMachine({
       });
       
       // Reset and start character reveal
-      setRevealedCharacters([]);
       setCurrentCharacterIndex(-1);
       revealNextCharacter();
     }
