@@ -21,7 +21,8 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
 import { MdLocalPlay, MdTimer } from 'react-icons/md';
-import Image from 'next/image';
+// Only import Image if we're using it
+// import Image from 'next/image';
 
 interface DrawMachineProps {
   lotteryId: string;
@@ -235,7 +236,7 @@ export default function DrawMachine({
       console.log("No winner tickets found - using sample data");
       
       // Check if there are winners with ticketNumber but no ID
-      const sampleTickets = drawSequence?.winners?.map((winner, index) => 
+      const sampleTickets = drawSequence?.winners?.map((winner) => 
         `T${winner.ticketNumber.toString().padStart(5, '0')}`
       ) || ['RRN328', 'ABC123'];
       
@@ -612,7 +613,7 @@ export default function DrawMachine({
               revealPhase === 'complete' ? 'border-prize-gold bg-prize-gold/10' : 'border-secondary bg-neutral-dark/50'
             }`}>
               <div className="flex space-x-1">
-                {currentTicketChars.map((charObj, index) => (
+                {currentTicketChars.map((charObj, i) => (
                   <motion.div
                     key={`${charObj.char}-${charObj.originalIndex}`}
                     className={`ticket-char w-12 h-16 flex items-center justify-center rounded-md font-bold text-2xl
@@ -622,7 +623,7 @@ export default function DrawMachine({
                     `}
                     initial={false}
                     animate={{
-                      x: (charObj.currentIndex - index) * 52, // 52px = char width + spacing
+                      x: (charObj.currentIndex - i) * 52, // 52px = char width + spacing
                       opacity: charObj.isRevealed ? 1 : 0.5,
                       rotateY: charObj.isRevealed ? 0 : 180,
                       scale: charObj.isRevealed ? 1 : 0.9,
@@ -653,12 +654,12 @@ export default function DrawMachine({
           
           {/* Progress indicator */}
           <div className="ticket-progress mt-6 flex justify-center">
-            {winnerTickets.map((_, index) => (
+            {winnerTickets.map((_, i) => (
               <div 
-                key={index}
+                key={i}
                 className={`w-2 h-2 rounded-full mx-1 ${
-                  index < currentTicketIndex ? 'bg-prize-gold' : 
-                  index === currentTicketIndex ? (revealPhase === 'complete' ? 'bg-prize-gold' : 'bg-secondary') : 
+                  i < currentTicketIndex ? 'bg-prize-gold' : 
+                  i === currentTicketIndex ? (revealPhase === 'complete' ? 'bg-prize-gold' : 'bg-secondary') : 
                   'bg-neutral-light/30'
                 }`}
               />
@@ -685,13 +686,13 @@ export default function DrawMachine({
           <h3 className="text-xl font-bold mb-4 text-center">Winners Announced</h3>
           
           <div className="winners-list space-y-4 overflow-auto max-h-[300px] pr-2">
-            {drawSequence?.winners?.map((winner, index) => (
+            {drawSequence?.winners?.map((winner, i) => (
               <div 
-                key={index}
+                key={i}
                 className="winner-card bg-neutral-dark rounded-lg p-4 flex items-start"
               >
                 <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3 font-semibold">
-                  {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index+1}th`}
+                  {i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `${i+1}th`}
                 </div>
                 
                 <div className="flex-1">
