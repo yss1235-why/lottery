@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MdLocalPlay, MdOutlineShuffleOn, MdAutorenew, MdCheckCircle } from 'react-icons/md';
 import { createRandomTicketPositions } from '@/lib/draw-animations';
+import { AnimatedTicket } from '@/types/draw-sequence';
 
 // Draw preparation steps
 const PREPARATION_STEPS = [
@@ -18,7 +19,7 @@ interface DrawPreparationAnimationProps {
 
 const DrawPreparationAnimation = ({ ticketCount = 30 }: DrawPreparationAnimationProps) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [tickets, setTickets] = useState<any[]>([]);
+  const [tickets, setTickets] = useState<AnimatedTicket[]>([]);
   const [progress, setProgress] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
