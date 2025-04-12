@@ -21,7 +21,7 @@ import {
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Confetti from '@/components/ui/animations/Confetti';
 import { formatCurrency } from '@/lib/formatters';
-import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdPerson } from 'react-icons/md';
+import { MdPause, MdPlayArrow, MdReplay, MdLocalPlay, MdPerson, MdTimer } from 'react-icons/md';
 import Image from 'next/image';
 
 interface DrawMachineProps {
@@ -60,13 +60,37 @@ export default function DrawMachine({
   const [selectedWinner, setSelectedWinner] = useState<DrawWinner | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   
-  // New states for character reveal
+  // Character reveal states
   const [characters, setCharacters] = useState<Character[]>([]);
   const [currentCharacterIndex, setCurrentCharacterIndex] = useState(-1);
+  const [timeUntilNextReveal, setTimeUntilNextReveal] = useState(5);
   const characterRevealTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketsContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Reset countdown timer for character reveals
+  const resetCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+    
+    setTimeUntilNextReveal(5);
+    
+    countdownTimerRef.current = setInterval(() => {
+      setTimeUntilNextReveal(prev => {
+        if (prev <= 1) {
+          // When reaching 0, clear the interval - next character will reset it
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000 / machineState.speed);
+  }, [machineState.speed]);
   
   // Function to reveal the next character in sequence
   const revealNextCharacter = useCallback(() => {
@@ -85,8 +109,17 @@ export default function DrawMachine({
           ...prevState,
           status: COMPLETE_STATUS
         }));
+        
+        // Clear countdown
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+        }
+        
         return prevIndex; // Keep the current index
       }
+      
+      // Reset countdown for next character
+      resetCountdown();
       
       // Schedule the next character reveal after 5 seconds
       characterRevealTimerRef.current = setTimeout(() => {
@@ -95,7 +128,7 @@ export default function DrawMachine({
       
       return nextIndex; // Return the new index
     });
-  }, [characters.length, machineState.speed]);
+  }, [characters.length, machineState.speed, resetCountdown]);
   
   // Character reveal function - wrapped in useCallback to avoid dependency issues
   const startCharacterReveal = useCallback(() => {
@@ -108,18 +141,25 @@ export default function DrawMachine({
       status: CHARACTER_REVEAL_STATUS
     }));
     
-    // Reveal the first character - manually inlined instead of calling revealNextCharacter
+    // Clear any existing timers
     if (characterRevealTimerRef.current) {
       clearTimeout(characterRevealTimerRef.current);
     }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
     
-    setCurrentCharacterIndex(0); // Start with first character
+    // Start with first character
+    setCurrentCharacterIndex(0);
+    
+    // Start countdown
+    resetCountdown();
     
     // Schedule the next character reveal after 5 seconds
     characterRevealTimerRef.current = setTimeout(() => {
       revealNextCharacter();
     }, 5000 / machineState.speed);
-  }, [machineState.speed, revealNextCharacter]);
+  }, [machineState.speed, revealNextCharacter, resetCountdown]);
   
   // Initialize and load data
   useEffect(() => {
@@ -211,6 +251,9 @@ export default function DrawMachine({
       if (characterRevealTimerRef.current) {
         clearTimeout(characterRevealTimerRef.current);
       }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
     };
   }, [lotteryId, drawId]);
   
@@ -223,11 +266,14 @@ export default function DrawMachine({
       }
       
       // Start character reveal after the main animation completes
-      if (characters.length > 0) {
-        startCharacterReveal();
+      if (characters.length > 0 && currentCharacterIndex < 0) {
+        // Add a small delay before starting character reveal
+        setTimeout(() => {
+          startCharacterReveal();
+        }, 1500);
       }
     }
-  }, [machineState.status, onDrawComplete, characters, startCharacterReveal]);
+  }, [machineState.status, onDrawComplete, characters, startCharacterReveal, currentCharacterIndex]);
   
   // Initialize tickets when lottery data is loaded
   useEffect(() => {
@@ -391,12 +437,28 @@ export default function DrawMachine({
       
       // Reset character reveal
       setCurrentCharacterIndex(-1);
-    } else if (machineState.status === CHARACTER_REVEAL_STATUS) {
-      // Resume character reveal
+      // Clear any pending timers
       if (characterRevealTimerRef.current) {
         clearTimeout(characterRevealTimerRef.current);
       }
-      revealNextCharacter();
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+    } else if (machineState.status === CHARACTER_REVEAL_STATUS) {
+      // Resume character reveal
+      if (isPaused) {
+        setIsPaused(false);
+        resetCountdown();
+        
+        if (characterRevealTimerRef.current) {
+          clearTimeout(characterRevealTimerRef.current);
+        }
+        
+        // Resume the character reveal with current countdown
+        characterRevealTimerRef.current = setTimeout(() => {
+          revealNextCharacter();
+        }, timeUntilNextReveal * 1000 / machineState.speed);
+      }
     } else {
       // Resume from current step
       setIsPaused(false);
@@ -411,8 +473,13 @@ export default function DrawMachine({
     setIsPaused(true);
     
     // Also pause character reveal if that's in progress
-    if (machineState.status === CHARACTER_REVEAL_STATUS && characterRevealTimerRef.current) {
-      clearTimeout(characterRevealTimerRef.current);
+    if (machineState.status === CHARACTER_REVEAL_STATUS) {
+      if (characterRevealTimerRef.current) {
+        clearTimeout(characterRevealTimerRef.current);
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
     }
   };
   
@@ -423,28 +490,45 @@ export default function DrawMachine({
     });
     
     // If we're in character reveal, restart the timer with new speed
-    if (machineState.status === CHARACTER_REVEAL_STATUS) {
+    if (machineState.status === CHARACTER_REVEAL_STATUS && !isPaused) {
       if (characterRevealTimerRef.current) {
         clearTimeout(characterRevealTimerRef.current);
       }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
       
+      // Restart countdown with new speed
+      resetCountdown();
+      
+      // Restart character reveal timer with new speed
       characterRevealTimerRef.current = setTimeout(() => {
         revealNextCharacter();
-      }, 5000 / speed);
+      }, timeUntilNextReveal * 1000 / speed);
     }
   };
   
   // Skip to character reveal (debug/testing function)
   const skipToCharacterReveal = () => {
     if (characters.length > 0) {
+      // Reset character reveal state
+      setCurrentCharacterIndex(-1);
+      
+      // Clear any pending timers
+      if (characterRevealTimerRef.current) {
+        clearTimeout(characterRevealTimerRef.current);
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+      
       setMachineState({
         ...machineState,
         status: CHARACTER_REVEAL_STATUS
       });
       
-      // Reset and start character reveal
-      setCurrentCharacterIndex(-1);
-      revealNextCharacter();
+      // Start character reveal
+      startCharacterReveal();
     }
   };
   
@@ -481,7 +565,15 @@ export default function DrawMachine({
       return (
         <div className="character-reveal-container bg-gradient-to-b from-neutral-dark to-primary rounded-lg overflow-hidden p-6" 
           style={{ height: isPopup ? '350px' : '400px' }}>
-          <h3 className="text-xl font-bold mb-6 text-center">Character Reveal</h3>
+          <h3 className="text-xl font-bold mb-4 text-center">Character Reveal</h3>
+          
+          {/* Countdown timer */}
+          <div className="countdown-timer flex justify-center items-center gap-2 mb-4">
+            <MdTimer size={24} className="text-prize-gold animate-pulse" />
+            <div className="text-prize-gold font-bold text-lg">
+              Next character in: {timeUntilNextReveal}s
+            </div>
+          </div>
           
           <div className="characters-grid grid grid-cols-3 gap-4">
             {characters.map((character, index) => {
@@ -563,7 +655,7 @@ export default function DrawMachine({
           <div className="animate-spin mb-4">
             <MdLocalPlay size={48} className="text-prize-gold" />
           </div>
-          <h3 className="text-xl font-bold mb-4">Draw in progress</h3>
+          <h3 className="text-xl font-bold mb-4">Draw in Progress</h3>
           <p className="text-neutral-light/70 max-w-md text-center">
             The draw for this lottery is currently being prepared.
             Please wait while we set up the drawing process.
@@ -692,8 +784,8 @@ export default function DrawMachine({
               </button>
             )}
             
-            {/* Character Reveal Button (in development mode) */}
-            {process.env.NODE_ENV === 'development' && machineState.status === COMPLETE_STATUS && (
+            {/* Character Reveal Button */}
+            {machineState.status === COMPLETE_STATUS && (
               <button
                 onClick={skipToCharacterReveal}
                 className="control-btn bg-prize-gold/20 text-prize-gold text-xs px-3 py-1 rounded-full"
@@ -804,6 +896,18 @@ export default function DrawMachine({
         .character-card {
           perspective: 1000px;
           transform-style: preserve-3d;
+        }
+        
+        .countdown-timer {
+          background-color: rgba(241, 196, 15, 0.1);
+          padding: 0.5rem 1rem;
+          border-radius: 2rem;
+          border: 1px solid rgba(241, 196, 15, 0.3);
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 0.8; }
+          50% { opacity: 1; }
         }
       `}</style>
     </div>
