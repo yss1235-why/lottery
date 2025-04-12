@@ -724,32 +724,20 @@ export default function DrawMachine({
       );
     }
     
-    // Special state: If lottery is completed but draw data is still loading
-    if (!drawSequence && lottery.status === 'completed') {
-      return (
-        <div className="flex flex-col items-center justify-center h-full py-12">
-          <div className="animate-spin mb-4">
-            <MdLocalPlay size={48} className="text-prize-gold" />
-          </div>
-          <h3 className="text-xl font-bold mb-4">Preparing Results</h3>
-          <p className="text-neutral-light/70 max-w-md text-center">
-            The draw has been completed. We&apos;re preparing to show you the winners...
-          </p>
-        </div>
-      );
-    }
-    
-    // Regular loading state - if draw hasn't started or no sequence exists
+    // Unified loading state - adapts message based on lottery status
     if (!drawSequence) {
       return (
         <div className="flex flex-col items-center justify-center h-full py-12">
           <div className="animate-spin mb-4">
             <MdLocalPlay size={48} className="text-prize-gold" />
           </div>
-          <h3 className="text-xl font-bold mb-4">Draw in Progress</h3>
+          <h3 className="text-xl font-bold mb-4">
+            {lottery.status === 'completed' ? 'Preparing Results' : 'Draw in Progress'}
+          </h3>
           <p className="text-neutral-light/70 max-w-md text-center">
-            The draw for this lottery is currently being prepared.
-            Please wait while we set up the drawing process.
+            {lottery.status === 'completed' 
+              ? 'The draw has been completed. We&apos;re preparing to show you the winners...' 
+              : 'The draw for this lottery is currently being prepared. Please wait while we set up the drawing process.'}
           </p>
         </div>
       );
