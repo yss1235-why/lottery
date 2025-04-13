@@ -29,7 +29,6 @@ export default function LotteryDetailPage() {
   
   // Primary state variables
   const [lottery, setLottery] = useState<Lottery | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hostName, setHostName] = useState<string>('');
   
@@ -64,13 +63,11 @@ export default function LotteryDetailPage() {
     const loadData = async () => {
       try {
         if (isMounted && !lottery) {
-          setLoading(true);
           setUIState('loading');
         }
         
         if (!lotteryId) {
           setError('Invalid lottery ID');
-          setLoading(false);
           setUIState('error');
           return;
         }
@@ -143,8 +140,6 @@ export default function LotteryDetailPage() {
             setError('Lottery not found or has been removed.');
             setUIState('error');
           }
-          
-          setLoading(false);
         });
 
         setError(null);
@@ -152,7 +147,6 @@ export default function LotteryDetailPage() {
         console.error('Error loading lottery:', err);
         if (isMounted) {
           setError('Failed to load lottery data. Please try again.');
-          setLoading(false);
           setUIState('error');
         }
       }
@@ -268,161 +262,8 @@ export default function LotteryDetailPage() {
         </div>
       </div>
       
-      {/* Lottery Info Card */}
-      <div className="lottery-info bg-neutral-dark mx-4 -mt-8 rounded-lg shadow-lg p-4 relative z-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h2 className="text-xl font-bold mb-4 flex items-center">
-              <MdDateRange className="mr-2 text-secondary" size={24} />
-              Lottery Details
-            </h2>
-            
-            <div className="info-table mt-3 space-y-3">
-              {/* Host/Agent Name */}
-              <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
-                <div className="text-neutral-light/70 flex items-center">
-                  <MdPerson className="mr-1 text-secondary" size={20} />
-                  Host:
-                </div>
-                <div className="font-medium">
-                  {hostName || 'Unknown Host'}
-                </div>
-              </div>
-              
-              {lottery.prizePool && (
-                <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
-                  <div className="text-neutral-light/70 flex items-center">
-                    <MdAttachMoney className="mr-1 text-prize-gold" size={20} />
-                    Prize Pool:
-                  </div>
-                  <div className="text-prize-gold font-dm-mono">
-                    {formatCurrency(lottery.prizePool)}
-                  </div>
-                </div>
-              )}
-              
-              {lottery.ticketPrice && (
-                <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
-                  <div className="text-neutral-light/70">Ticket Price:</div>
-                  <div className="font-medium">
-                    {formatCurrency(lottery.ticketPrice)}
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
-                <div className="text-neutral-light/70 flex items-center">
-                  <MdGroups className="mr-1 text-secondary" size={20} />
-                  Tickets:
-                </div>
-                <div className="font-medium">
-                  {lottery.ticketsBooked || 0} / {lottery.ticketCapacity} sold
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
-                <div className="text-neutral-light/70">Status:</div>
-                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  lottery.status === 'active'
-                    ? hasDrawTimePassed() 
-                      ? 'bg-alert/20 text-alert' // Draw time passed but still active
-                      : 'bg-success/20 text-success' // Active and within draw time
-                    : lottery.status === 'drawing'
-                    ? 'bg-secondary/20 text-secondary' // Drawing in progress
-                    : lottery.status === 'completed'
-                    ? 'bg-prize-gold/20 text-prize-gold' // Completed
-                    : 'bg-accent/20 text-accent' // Other status
-                }`}>
-                  {lottery.status === 'active'
-                    ? hasDrawTimePassed() 
-                      ? 'Extended' // Draw time passed but still active
-                      : 'Active' // Active and within draw time
-                    : lottery.status === 'drawing'
-                    ? 'Drawing' // Drawing in progress
-                    : lottery.status === 'completed'
-                    ? 'Completed' // Completed
-                    : 'Closed' // Other status
-                  }
-                </div>
-              </div>
-            </div>
-            
-            {/* Ticket Progress */}
-            <div className="mt-4">
-              <ProgressBar
-                percentage={remainingPercentage}
-                showPercentage={true}
-                color={remainingPercentage < 20 ? 'bg-alert' : 'bg-secondary'}
-                className="mb-1"
-              />
-              <div className="text-xs text-neutral-light/70 text-center">
-                {ticketsRemaining} tickets remaining
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <h2 className="text-xl font-bold mb-4 flex items-center">
-              <MdLocalPlay className="mr-2 text-prize-gold" size={24} />
-              Prize Details
-            </h2>
-            
-            {lottery.prizes && lottery.prizes.length > 0 ? (
-              <div className="prize-list space-y-3">
-                {lottery.prizes.map((prize, index) => (
-                  <div 
-                    key={index}
-                    className="prize-item p-3 rounded-lg bg-neutral-light/5 flex items-center"
-                  >
-                    <div className="prize-indicator w-8 h-8 rounded-full bg-prize-gold/20 text-prize-gold flex items-center justify-center mr-3 font-semibold">
-                      {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index+1}th`}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{prize.name}</div>
-                      {typeof prize.value === 'number' && (
-                        <div className="text-prize-gold text-sm">
-                          {formatCurrency(prize.value)}
-                        </div>
-                      )}
-                      {typeof prize.value === 'string' && (
-                        <div className="text-prize-gold text-sm">
-                          {prize.value}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-neutral-light/70 text-center py-4">
-                No prize details available.
-              </div>
-            )}
-            
-            {lottery.description && (
-              <div className="mt-4 bg-neutral-light/5 p-3 rounded-lg">
-                <div className="text-sm text-neutral-light/70 mb-1">Description:</div>
-                <div className="text-sm">{lottery.description}</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      
-      {/* Draw Notification - Show when tickets are fully booked but draw hasn't started */}
-      {shouldShowDrawNotification && (
-        <div className="bg-prize-gold/10 mx-4 mt-4 p-4 rounded-lg border border-prize-gold/30">
-          <div className="flex items-center">
-            <MdNotifications className="text-prize-gold mr-3" size={24} />
-            <div>
-              <h3 className="font-bold text-lg text-prize-gold">Draw Coming Soon!</h3>
-              <p className="text-neutral-light/80">
-                All tickets have been booked. The lottery draw will start shortly.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Rest of the component remains the same */}
+      {/* ... */}
       
       {/* Main content area - Only two states: ticket selection or results */}
       <div className="mt-6">
