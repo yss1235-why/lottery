@@ -1,6 +1,5 @@
-"use client";
 // File path: src/components/ui/ProgressBar.tsx
-import { useEffect, useRef } from 'react';
+"use client";
 
 interface ProgressBarProps {
   percentage: number;
@@ -8,7 +7,6 @@ interface ProgressBarProps {
   showPercentage?: boolean;
   color?: string;
   height?: number;
-  animated?: boolean;
 }
 
 export default function ProgressBar({
@@ -16,27 +14,10 @@ export default function ProgressBar({
   className = '',
   showPercentage = false,
   color = 'bg-secondary',
-  height = 6,
-  animated = true
+  height = 6
 }: ProgressBarProps) {
-  const progressRef = useRef<HTMLDivElement>(null);
-  
   // Ensure percentage is between 0 and 100
   const validPercentage = Math.min(100, Math.max(0, percentage));
-  
-  // Animation effect for progress bar
-  useEffect(() => {
-    if (!progressRef.current || !animated) return;
-    
-    const progressElement = progressRef.current;
-    
-    // Animate width from 0 to the target percentage
-    progressElement.style.width = '0%';
-    
-    setTimeout(() => {
-      progressElement.style.width = `${validPercentage}%`;
-    }, 100);
-  }, [validPercentage, animated]);
   
   return (
     <div className={`progress-container relative ${className}`}>
@@ -47,22 +28,9 @@ export default function ProgressBar({
       >
         {/* Progress indicator */}
         <div
-          ref={progressRef}
-          className={`h-full ${color} transition-all duration-500`}
-          style={{ width: animated ? '0%' : `${validPercentage}%` }}
+          className={`h-full ${color}`}
+          style={{ width: `${validPercentage}%` }}
         />
-        
-        {/* Optional pulse effect for low percentage */}
-        {validPercentage < 20 && animated && (
-          <div
-            className="absolute inset-0 progress-pulse bg-alert rounded-full"
-            style={{ 
-              width: `${validPercentage}%`,
-              height: `${height}px`,
-              animation: 'pulse 2s infinite' 
-            }}
-          />
-        )}
       </div>
       
       {/* Optional percentage display */}
