@@ -432,6 +432,34 @@ export const firebaseService = {
   },
   
   /**
+   * Subscribes to agent information for real-time updates
+   * @param agentId Agent ID to subscribe to
+   * @param callback Function to call with updated data
+   * @returns Unsubscribe function
+   */
+  subscribeToAgent(agentId: string, callback: (agent: AgentData | null) => void): () => void {
+    const agentRef = ref(database, `agents/${agentId}`);
+    
+    const handleData = (snapshot: DataSnapshot) => {
+      if (snapshot.exists()) {
+        const agent = {
+          id: snapshot.key as string,
+          ...snapshot.val()
+        };
+        callback(agent);
+      } else {
+        callback(null);
+      }
+    };
+    
+    onValue(agentRef, handleData);
+    
+    return () => {
+      off(agentRef, 'value', handleData);
+    };
+  },
+  
+  /**
    * Fetches all available prizes
    * @returns Promise with an array of prize objects
    */
@@ -812,6 +840,75 @@ export const firebaseService = {
       // Update winners and lastUpdated
       await update(drawRef, {
         winners,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Also record the winner in the winners collection
+      const winnersRef = ref(database, 'winners');
+      const newWinnerRef = push(winnersRef);
+      
+      await update(newWinnerRef, {
+        name: winner.playerName,
+        ticketNumber: winner.ticketNumber,
+        prizeId: winner.prize.id,
+        prize: winner.prize,
+        drawId,
+        lotteryId: (await get(ref(database, `drawSequences/${drawId}/lotteryId`))).val(),
+        drawDate: (await get(ref(database, `drawSequences/${drawId}/drawDate`))).val(),
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Error adding winner to draw ${drawId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Adds a winner to a draw sequence with improved UI notification
+   * @param drawId The ID of the draw sequence
+   * @param winner The winner to add
+   * @returns Promise that resolves when the winner is added
+   */
+  async addDrawWinnerWithNotification(drawId: string, winner: DrawWinner): Promise<void> {
+    try {
+      const drawRef = ref(database, `drawSequences/${drawId}`);
+      const drawWinnersRef = ref(database, `drawSequences/${drawId}/winners`);
+      
+      // Get current winners
+      const snapshot = await get(drawWinnersRef);
+      const winners: DrawWinner[] = snapshot.exists() ? snapshot.val() : [];
+      
+      // Add new winner
+      winners.push(winner);
+      
+      // Update winners and lastUpdated
+      await update(drawRef, {
+        winners,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Also update the lottery with the new winner information
+      const lotteryRef = ref(database, await get(ref(database, `drawSequences/${drawId}/lotteryId`)).then(snap => `lotteries/${snap.val()}`));
+      
+      // Get existing lottery winners
+      const lotteryWinnersSnapshot = await get(ref(database, `${lotteryRef.toString()}/winners`));
+      const lotteryWinners = lotteryWinnersSnapshot.exists() ? lotteryWinnersSnapshot.val() : [];
+      
+      // Add the winner to the lottery's winners array
+      const newLotteryWinner = {
+        id: winner.id || winner.ticketId,
+        number: winner.ticketNumber,
+        playerName: winner.playerName,
+        prizeIndex: winner.prize.id ? undefined : winners.length - 1, // Use array index if no specific prize ID
+        prizeName: winner.prize.name,
+        prizeValue: winner.prize.value
+      };
+      
+      lotteryWinners.push(newLotteryWinner);
+      
+      // Update the lottery with the new winner
+      await update(lotteryRef, {
+        winners: lotteryWinners,
         updatedAt: new Date().toISOString()
       });
       
