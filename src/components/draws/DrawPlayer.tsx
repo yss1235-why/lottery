@@ -1,10 +1,9 @@
-// File: src/components/draws/DrawPlayer.tsx
+// File path: src/components/draws/DrawPlayer.tsx
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
 import { formatDate } from '@/lib/formatters';
 import { MdPlayArrow, MdPause, MdVolumeUp, MdVolumeOff, MdFullscreen } from 'react-icons/md';
-import DrawResult from './DrawResult';
 import { Draw } from '@/types/draw';
 
 interface DrawPlayerProps {
@@ -17,7 +16,6 @@ export default function DrawPlayer({ draw }: DrawPlayerProps) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [showControls, setShowControls] = useState(true);
-  const [showResult, setShowResult] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
@@ -30,13 +28,6 @@ export default function DrawPlayer({ draw }: DrawPlayerProps) {
     
     const onTimeUpdate = () => {
       setCurrentTime(videoElement.currentTime);
-      
-      // Show result near the end of the video
-      if (videoElement.duration > 0 && 
-          videoElement.currentTime / videoElement.duration > 0.8 && 
-          !showResult) {
-        setShowResult(true);
-      }
     };
     
     const onLoadedMetadata = () => {
@@ -57,7 +48,7 @@ export default function DrawPlayer({ draw }: DrawPlayerProps) {
       videoElement.removeEventListener('play', onPlay);
       videoElement.removeEventListener('pause', onPause);
     };
-  }, [showResult]);
+  }, []);
 
   // Video control functions
   const togglePlay = () => {
@@ -83,11 +74,6 @@ export default function DrawPlayer({ draw }: DrawPlayerProps) {
     const newTime = parseFloat(e.target.value);
     videoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
-    
-    // Reset result display if seeking back
-    if (newTime / duration < 0.8) {
-      setShowResult(false);
-    }
   };
   
   const enterFullscreen = () => {
@@ -194,13 +180,19 @@ export default function DrawPlayer({ draw }: DrawPlayerProps) {
           </div>
         </div>
         
-        {/* Draw Result Component */}
-        {showResult && draw.winner && (
-          <DrawResult
-            winnerName={draw.winner.name}
-            prizeName={draw.winner.prize}
-            onClose={() => setShowResult(false)}
-          />
+        {/* Winner display - simplified static version */}
+        {draw.winner && (
+          <div className="absolute bottom-16 right-4 bg-neutral-dark p-4 rounded-lg shadow-lg z-10">
+            <h3 className="text-lg font-bold mb-2">Winner: {draw.winner.name}</h3>
+            <div className="text-prize-gold font-bold">
+              Prize: {draw.winner.prize}
+            </div>
+            {draw.winner.ticketNumber && (
+              <div className="mt-1 text-sm text-neutral-light/70">
+                Ticket #{draw.winner.ticketNumber}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
