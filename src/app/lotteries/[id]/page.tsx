@@ -2,8 +2,9 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { motion } from 'framer-motion';
 import { firebaseService } from '@/services/firebase-service';
 import { Lottery } from '@/types/lottery';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,107 +13,157 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import TicketGrid from '@/components/lotteries/TicketGrid';
+import DrawMachine from '@/components/draws/DrawMachine';
 import { analyticsService } from '@/services/analytics-service';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdNotifications } from 'react-icons/md';
-
-// Simplified UI states
-type LotteryUIState = 'loading' | 'error' | 'ticket-selection' | 'results' | 'draw-pending';
+import { MdLocalPlay, MdDateRange, MdAttachMoney, MdGroups, MdPerson, MdClose, MdNotifications } from 'react-icons/md';
 
 export default function LotteryDetailPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const { id } = useParams();
   // Convert id to string and provide a default value if it's undefined
   const lotteryId = Array.isArray(id) ? id[0] : (id || '');
   
-  // Primary state variables
   const [lottery, setLottery] = useState<Lottery | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hostName, setHostName] = useState<string>('');
+  const [hostName, setHostName] = useState<string>(''); 
+  const [hostId, setHostId] = useState<string>('');
+  const [showDrawNotification, setShowDrawNotification] = useState(false);
+  const [showDrawPopup, setShowDrawPopup] = useState(false);
   
-  // Simplified UI state with no animations
-  const [uiState, setUIState] = useState<LotteryUIState>('loading');
+  // Add state to track animation completion
+  const [animationComplete, setAnimationComplete] = useState(false);
   
-  // Throttle updates to prevent excessive re-renders
-  const lastUpdateTimeRef = useRef<number>(0);
-  const lastStatusRef = useRef<string | undefined>(undefined);
+  // Track lottery status changes for draw popup only
+  const prevStatusRef = useRef<string | undefined>(lottery?.status);
+  
+  // Ref to draw section for auto-scrolling
+  const drawSectionRef = useRef<HTMLDivElement>(null);
 
-  // Primary effect for lottery data monitoring
+  // Add listener for navigation events to reset popup visibility
+  useEffect(() => {
+    // Listen for route changes to reset popup state
+    const handleRouteChange = () => {
+      setShowDrawPopup(false);
+    };
+
+    window.addEventListener('popstate', handleRouteChange);
+    
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
+  // Function to scroll to draw section
+  const scrollToDrawSection = () => {
+    if (drawSectionRef.current) {
+      drawSectionRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      });
+    }
+  };
+  
   useEffect(() => {
     let isMounted = true;
     let unsubscribeLottery = () => {};
+    let unsubscribeAgent = () => {};
 
     const loadData = async () => {
       try {
+        // Only set loading on initial load
         if (isMounted && !lottery) {
-          setUIState('loading');
+          setLoading(true);
         }
         
+        // Ensure we have a valid lotteryId from params
         if (!lotteryId) {
           setError('Invalid lottery ID');
-          setUIState('error');
+          setLoading(false);
           return;
         }
         
-        // Set up real-time subscription with throttling
+        // Set up real-time subscription to lottery data
         unsubscribeLottery = firebaseService.subscribeToLottery(lotteryId, async (lotteryData) => {
           if (!isMounted) return;
           
           if (lotteryData) {
-            // Add throttling logic
-            const now = Date.now();
-            const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
-            const newStatus = lotteryData.status;
-            const hasDataActuallyChanged = JSON.stringify(lottery) !== JSON.stringify(lotteryData);
+            setLottery(lotteryData);
             
-            // Only process significant updates
-            if (
-              lastUpdateTimeRef.current === 0 || 
-              lastStatusRef.current !== newStatus || 
-              (hasDataActuallyChanged && timeSinceLastUpdate > 2000)
-            ) {
-              console.log(`Processing lottery update, status: ${newStatus}`);
+            // Log lottery view in analytics
+            analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
+            
+            // Check if tickets are fully booked but draw hasn't started
+            const isFullyBooked = lotteryData.ticketCapacity > 0 && 
+                                (lotteryData.ticketsBooked || 0) >= lotteryData.ticketCapacity;
+            
+            if (isFullyBooked && lotteryData.status === 'active') {
+              setShowDrawNotification(true);
+            } else {
+              setShowDrawNotification(false);
+            }
+            
+            // Only check for 'drawing' status changes for the popup
+            if (prevStatusRef.current !== 'drawing' && lotteryData.status === 'drawing') {
+              // Auto-show the draw popup when lottery status changes to drawing
+              setShowDrawPopup(true);
+              // Auto-scroll to draw section
+              setTimeout(() => scrollToDrawSection(), 500);
+            }
+            
+            // Always show the draw popup when lottery is in drawing state
+            if (lotteryData.status === 'drawing') {
+              setShowDrawPopup(true);
+            }
+            
+            // Update previous status ref
+            prevStatusRef.current = lotteryData.status;
+            
+            // Reset animation complete state when lottery status changes
+            if (lotteryData.status !== 'completed') {
+              setAnimationComplete(false);
+            }
+            
+            // Fetch agent/host information if agentId exists and has changed
+            if (lotteryData.agentId && lotteryData.agentId !== hostId) {
+              setHostId(lotteryData.agentId);
               
-              setLottery(lotteryData);
-              analyticsService.logLotteryView(lotteryData.id, lotteryData.name);
-              
-              // Simplified state transitions - no animations
-              if (newStatus === 'drawing') {
-                // Show a simple "draw in progress" message
-                setUIState('draw-pending');
-              } else if (newStatus === 'completed') {
-                // Directly show results for completed lotteries
-                setUIState('results');
-              } else if (uiState === 'loading') {
-                // Default to ticket selection for active lotteries
-                setUIState('ticket-selection');
+              // Unsubscribe from previous agent subscription if it exists
+              if (unsubscribeAgent) {
+                unsubscribeAgent();
               }
               
-              // Fetch agent info only on first load or when agent changes
-              if (!hostName || lastStatusRef.current !== newStatus) {
-                if (lotteryData.agentId) {
-                  try {
-                    const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
-                    if (agentInfo && isMounted) {
-                      setHostName(agentInfo.name || 'Unknown Host');
-                    }
-                  } catch (agentError) {
-                    console.error('Error fetching agent information:', agentError);
-                    if (isMounted) {
-                      setHostName('Unknown Host');
-                    }
-                  }
+              // Set up real-time subscription to agent data
+              unsubscribeAgent = firebaseService.subscribeToAgent(lotteryData.agentId, (agentData) => {
+                if (agentData && isMounted) {
+                  setHostName(agentData.name || 'Agent');
+                } else if (isMounted) {
+                  // Fallback to a generic name instead of "Unknown Host"
+                  setHostName('Lottery Agent');
+                }
+              });
+              
+              // Also try to get agent data directly as a backup
+              try {
+                const agentInfo = await firebaseService.getAgentById(lotteryData.agentId);
+                if (agentInfo && isMounted && !hostName) {
+                  setHostName(agentInfo.name || 'Agent');
+                }
+              } catch (agentError) {
+                console.error('Error fetching agent information:', agentError);
+                if (isMounted && !hostName) {
+                  setHostName('Lottery Agent');
                 }
               }
-              
-              // Update timestamp and status reference
-              lastUpdateTimeRef.current = now;
-              lastStatusRef.current = newStatus;
             }
           } else {
             setError('Lottery not found or has been removed.');
-            setUIState('error');
           }
+          
+          // Clear loading state once data is received
+          setLoading(false);
         });
 
         setError(null);
@@ -120,11 +171,12 @@ export default function LotteryDetailPage() {
         console.error('Error loading lottery:', err);
         if (isMounted) {
           setError('Failed to load lottery data. Please try again.');
-          setUIState('error');
+          setLoading(false);
         }
       }
     };
 
+    // Only load data if user is authenticated
     if (user) {
       loadData();
     }
@@ -132,10 +184,26 @@ export default function LotteryDetailPage() {
     return () => {
       isMounted = false;
       unsubscribeLottery();
+      if (unsubscribeAgent) {
+        unsubscribeAgent();
+      }
     };
-  }, [lotteryId, user, uiState, lottery, hostName]);
+  }, [lotteryId, user, lottery, hostName, hostId]);
   
-  // Function to check if lottery draw time has passed
+  // Handler for animation completion
+  const handleDrawComplete = () => {
+    console.log('Draw animation completed, updating UI');
+    setAnimationComplete(true);
+    
+    // Close the draw popup when animation completes
+    if (showDrawPopup) {
+      setTimeout(() => {
+        setShowDrawPopup(false);
+      }, 3000); // Close popup 3 seconds after animation completes
+    }
+  };
+  
+  // Function to check if lottery draw time has passed (for display purposes only)
   const hasDrawTimePassed = () => {
     if (!lottery) return false;
     
@@ -145,8 +213,7 @@ export default function LotteryDetailPage() {
     return now > drawTime;
   };
   
-  // Loading state
-  if (uiState === 'loading') {
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner />
@@ -154,9 +221,8 @@ export default function LotteryDetailPage() {
     );
   }
 
-  // Error state
-  if (uiState === 'error') {
-    return <ErrorMessage message={error || "An error occurred"} />;
+  if (error) {
+    return <ErrorMessage message={error} />;
   }
 
   if (!lottery) {
@@ -170,10 +236,11 @@ export default function LotteryDetailPage() {
   // Format date for display
   const drawDateFormatted = formatDate(lottery.drawTime);
   
-  // Check if all tickets are booked but draw hasn't started
-  const shouldShowDrawNotification = 
-    ticketsRemaining === 0 && 
-    lottery.status === 'active';
+  // Determine if we should show the draw results based on status AND animation completion
+  const showDrawResults = lottery.status === 'completed' && animationComplete;
+  
+  // Determine if the draw is in progress
+  const isDrawing = lottery.status === 'drawing';
   
   return (
     <div className="lottery-detail pb-20">
@@ -225,14 +292,14 @@ export default function LotteryDetailPage() {
             </h2>
             
             <div className="info-table mt-3 space-y-3">
-              {/* Host/Agent Name */}
+              {/* Host/Agent Name - Now with improved display */}
               <div className="flex justify-between items-center p-2 bg-neutral-dark/40 rounded">
                 <div className="text-neutral-light/70 flex items-center">
                   <MdPerson className="mr-1 text-secondary" size={20} />
                   Host:
                 </div>
                 <div className="font-medium">
-                  {hostName || 'Unknown Host'}
+                  {hostName || 'Lottery Agent'}
                 </div>
               </div>
               
@@ -275,7 +342,7 @@ export default function LotteryDetailPage() {
                       ? 'bg-alert/20 text-alert' // Draw time passed but still active
                       : 'bg-success/20 text-success' // Active and within draw time
                     : lottery.status === 'drawing'
-                    ? 'bg-secondary/20 text-secondary' // Drawing in progress
+                    ? 'bg-secondary/20 text-secondary animate-pulse' // Drawing in progress with animation
                     : lottery.status === 'completed'
                     ? 'bg-prize-gold/20 text-prize-gold' // Completed
                     : 'bg-accent/20 text-accent' // Other status
@@ -285,7 +352,7 @@ export default function LotteryDetailPage() {
                       ? 'Extended' // Draw time passed but still active
                       : 'Active' // Active and within draw time
                     : lottery.status === 'drawing'
-                    ? 'Drawing' // Drawing in progress
+                    ? 'Drawing in Progress' // Drawing in progress
                     : lottery.status === 'completed'
                     ? 'Completed' // Completed
                     : 'Closed' // Other status
@@ -316,29 +383,57 @@ export default function LotteryDetailPage() {
             
             {lottery.prizes && lottery.prizes.length > 0 ? (
               <div className="prize-list space-y-3">
-                {lottery.prizes.map((prize, index) => (
-                  <div 
-                    key={index}
-                    className="prize-item p-3 rounded-lg bg-neutral-light/5 flex items-center"
-                  >
-                    <div className="prize-indicator w-8 h-8 rounded-full bg-prize-gold/20 text-prize-gold flex items-center justify-center mr-3 font-semibold">
-                      {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index+1}th`}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{prize.name}</div>
-                      {typeof prize.value === 'number' && (
-                        <div className="text-prize-gold text-sm">
-                          {formatCurrency(prize.value)}
-                        </div>
-                      )}
-                      {typeof prize.value === 'string' && (
-                        <div className="text-prize-gold text-sm">
-                          {prize.value}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {lottery.prizes.map((prize, index) => {
+                  // Find winner for this prize if available
+                  const winner = lottery.winners?.find(w => w.prizeIndex === index);
+                  
+                  return (
+                    <motion.div 
+                      key={index}
+                      className={`prize-item p-4 rounded-lg ${
+                        winner ? 'bg-prize-gold/10 border border-prize-gold/30' : 'bg-neutral-light/5'
+                      } flex items-start`}
+                      initial={winner ? { scale: 0.95 } : { scale: 1 }}
+                      animate={winner ? { scale: 1 } : { scale: 1 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 10 }}
+                    >
+                      <div className="prize-indicator w-10 h-10 rounded-full bg-prize-gold/20 text-prize-gold flex items-center justify-center mr-3 font-semibold shrink-0">
+                        {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index+1}th`}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-lg">{prize.name}</div>
+                        {typeof prize.value === 'number' && (
+                          <div className="text-prize-gold text-lg font-mono">
+                            {formatCurrency(prize.value)}
+                          </div>
+                        )}
+                        {typeof prize.value === 'string' && (
+                          <div className="text-prize-gold text-lg font-mono">
+                            {prize.value}
+                          </div>
+                        )}
+                        
+                        {/* Winner information if available */}
+                        {winner && (
+                          <div className="mt-2 pt-2 border-t border-prize-gold/20">
+                            <div className="text-sm font-semibold">Winner:</div>
+                            <div className="flex items-center mt-1">
+                              <div className="bg-white/10 w-7 h-7 rounded-full flex items-center justify-center mr-2">
+                                <span className="text-sm font-medium">{winner.playerName.charAt(0).toUpperCase()}</span>
+                              </div>
+                              <div>
+                                <div className="font-medium">{winner.playerName}</div>
+                                <div className="text-xs text-neutral-light/70">
+                                  Ticket #{winner.number}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-neutral-light/70 text-center py-4">
@@ -356,8 +451,8 @@ export default function LotteryDetailPage() {
         </div>
       </div>
       
-      {/* Draw Notification - Show when tickets are fully booked but draw hasn't started */}
-      {shouldShowDrawNotification && (
+      {/* Draw Notification - Show only when tickets are fully booked but draw hasn't started */}
+      {showDrawNotification && lottery.status === 'active' && !isDrawing && (
         <div className="bg-prize-gold/10 mx-4 mt-4 p-4 rounded-lg border border-prize-gold/30">
           <div className="flex items-center">
             <MdNotifications className="text-prize-gold mr-3" size={24} />
@@ -371,9 +466,26 @@ export default function LotteryDetailPage() {
         </div>
       )}
       
-      {/* Main content area - Only three states: ticket selection, draw pending, or results */}
-      <div className="mt-6">
-        {uiState === 'results' && (
+      {/* Main content area - Show draw animation or results based on status AND animation completion */}
+      <div className="mt-6" ref={drawSectionRef}>
+        {/* Drawing status - Show the Draw Machine prominently */}
+        {isDrawing && (
+          <div className="mx-4">
+            <div className="bg-secondary/10 p-2 rounded-lg mb-4 text-center animate-pulse">
+              <p className="text-secondary font-medium">
+                Draw in progress - Watch the live selection!
+              </p>
+            </div>
+            <DrawMachine 
+              lotteryId={lotteryId} 
+              drawId={lottery.drawId}
+              onDrawComplete={handleDrawComplete}
+            />
+          </div>
+        )}
+        
+        {/* Completed status - Show the results */}
+        {showDrawResults && (
           <div className="mx-4">
             <h2 className="text-xl font-bold mb-4">Lottery Results</h2>
             <div className="bg-neutral-dark rounded-lg p-4">
@@ -387,27 +499,34 @@ export default function LotteryDetailPage() {
                 </p>
                 
                 {lottery.winners && lottery.winners.length > 0 ? (
-                  <div className="mt-4 space-y-3">
-                    <h4 className="font-bold text-lg">Winners</h4>
-                    {lottery.winners.map((winner, index) => (
-                      <div 
-                        key={index}
-                        className="bg-neutral-dark/50 p-3 rounded-lg flex items-center"
-                      >
-                        <div className="bg-prize-gold/20 text-prize-gold rounded-full w-8 h-8 flex items-center justify-center mr-3">
-                          {index + 1}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-bold">{winner.playerName}</div>
-                          <div className="text-sm text-neutral-light/70">
-                            Ticket #{winner.number}
+                  <div className="mt-6 space-y-3">
+                    <h4 className="font-bold text-lg text-center">Winners</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                      {lottery.winners.map((winner, index) => (
+                        <motion.div 
+                          key={index}
+                          className="bg-prize-gold/10 p-4 rounded-lg flex items-center border border-prize-gold/30"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <div className="bg-prize-gold/20 text-prize-gold rounded-full w-10 h-10 flex items-center justify-center mr-3 shrink-0">
+                            {index + 1}
                           </div>
-                        </div>
-                        <div className="text-prize-gold">
-                          {winner.prizeName}
-                        </div>
-                      </div>
-                    ))}
+                          <div className="flex-1">
+                            <div className="font-bold">{winner.playerName}</div>
+                            <div className="text-sm text-neutral-light/70">
+                              Ticket #{winner.number}
+                            </div>
+                            <div className="text-prize-gold font-medium mt-1">
+                              {winner.prizeName || 
+                               (lottery.prizes && lottery.prizes[winner.prizeIndex || 0]?.name) || 
+                               'Prize'}
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-neutral-light/70">
@@ -419,22 +538,8 @@ export default function LotteryDetailPage() {
           </div>
         )}
         
-        {uiState === 'draw-pending' && (
-          <div className="mx-4">
-            <div className="bg-neutral-dark rounded-lg p-8 text-center">
-              <LoadingSpinner />
-              <h3 className="text-xl font-bold mt-4 mb-2">Draw in Progress</h3>
-              <p className="text-neutral-light/70">
-                The lottery draw is being processed. Please wait for the results to be announced.
-              </p>
-              <p className="mt-4 text-secondary">
-                Results will appear automatically when the draw is complete.
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {uiState === 'ticket-selection' && (
+        {/* Active status - Show ticket grid */}
+        {lottery.status === 'active' && (
           <div>
             {hasDrawTimePassed() && (
               <div className="bg-alert/10 mx-4 p-3 rounded-lg mb-4 text-center">
@@ -446,7 +551,70 @@ export default function LotteryDetailPage() {
             <TicketGrid lotteryId={lotteryId} />
           </div>
         )}
+        
+        {/* Hidden draw machine for completed draws if animation isn't complete */}
+        {lottery.status === 'completed' && !animationComplete && !showDrawPopup && (
+          <div className="mx-4">
+            <DrawMachine 
+              lotteryId={lotteryId} 
+              drawId={lottery.drawId}
+              onDrawComplete={handleDrawComplete}
+            />
+          </div>
+        )}
       </div>
+      
+      {/* Draw Popup Modal - Only for 'drawing' status */}
+      {(showDrawPopup && lottery?.status === 'drawing') && (
+        <div className="fixed inset-0 backdrop-blur-md bg-neutral-dark/80 flex items-center justify-center z-50 p-4">
+          <motion.div 
+            className="bg-gradient-to-b from-neutral-dark to-primary rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto shadow-xl border border-neutral-light/10"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="flex justify-between items-center p-4 border-b border-neutral-light/10">
+              <div className="flex items-center">
+                <div className="bg-prize-gold/20 p-2 rounded-full mr-3">
+                  <MdLocalPlay size={24} className="text-prize-gold" />
+                </div>
+                <h2 className="text-xl font-bold">Live Draw: {lottery.name}</h2>
+              </div>
+              <button 
+                onClick={() => setShowDrawPopup(false)}
+                className="text-neutral-light/70 hover:text-white transition-colors"
+                aria-label="Close draw popup"
+              >
+                <MdClose size={24} />
+              </button>
+            </div>
+            
+            <div className="p-4">
+              {/* Status indicator ribbon */}
+              <div className="w-full bg-secondary/20 text-center py-2 mb-4 rounded">
+                <span className="font-medium text-secondary">
+                  <span className="inline-block h-2 w-2 rounded-full bg-secondary animate-pulse mr-2"></span>
+                  Live Draw in Progress
+                </span>
+              </div>
+
+              {/* Draw animation */}
+              <DrawMachine 
+                lotteryId={lotteryId} 
+                drawId={lottery.drawId} 
+                isPopup={true}
+                onDrawComplete={handleDrawComplete}
+              />
+              
+              {/* Additional information for users */}
+              <div className="mt-4 p-3 bg-neutral-dark/50 rounded-lg text-sm text-neutral-light/70 text-center">
+                Watch as the lottery system randomly selects winning tickets in real-time.
+                Once the draw is complete, winners will be announced.
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
