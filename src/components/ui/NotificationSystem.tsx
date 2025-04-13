@@ -10,6 +10,7 @@ import { DrawWinner } from '@/types/draw-sequence';
 import { MdEmojiEvents, MdLocalPlay } from 'react-icons/md';
 import { firebaseService } from '@/services/firebase-service';
 import { useAuth } from '@/contexts/AuthContext';
+import { useParams } from 'next/navigation';
 
 interface Notification {
   id: string;
@@ -25,6 +26,12 @@ export const NotificationSystem = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [visibleNotification, setVisibleNotification] = useState<Notification | null>(null);
   const { user } = useAuth();
+  const params = useParams();
+
+  // Get current lottery ID from URL if we're on a lottery page
+  const currentLotteryId = params && params.id 
+    ? Array.isArray(params.id) ? params.id[0] : params.id 
+    : null;
 
   // Debug logging - remove after troubleshooting
   useEffect(() => {
@@ -45,6 +52,12 @@ export const NotificationSystem = () => {
       console.log('Drawing lotteries subscription triggered:', lotteries.length);
       
       lotteries.forEach(lottery => {
+        // Skip notifications for the current lottery page
+        if (currentLotteryId && lottery.id === currentLotteryId) {
+          console.log('Skipping notification for current lottery:', lottery.id);
+          return;
+        }
+        
         // Create a notification for each lottery that's in drawing state
         const notificationId = `draw-${lottery.id}`;
         
@@ -73,6 +86,12 @@ export const NotificationSystem = () => {
       const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
       
       winners.forEach(winner => {
+        // Skip notifications for the current lottery page
+        if (currentLotteryId && winner.lotteryId === currentLotteryId) {
+          console.log('Skipping winner notification for current lottery:', winner.lotteryId);
+          return;
+        }
+        
         // Create notification for recent winners
         const notificationId = `winner-${winner.id}`;
         
@@ -98,7 +117,7 @@ export const NotificationSystem = () => {
       unsubscribeLotteries();
       unsubscribeWinners();
     };
-  }, [user, notifications]);
+  }, [user, notifications, currentLotteryId]);
 
   // Display notifications one by one
   useEffect(() => {
